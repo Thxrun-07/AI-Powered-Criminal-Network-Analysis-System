@@ -6,6 +6,7 @@ from backend.database import db
 from backend.models.case_input import CaseEnvelope, CaseData, IngestResponse, CaseDeleteRequest, CaseDeleteSummary
 from backend.services.ingestion_service import IngestionService
 from backend.services.graph_service import GraphService
+from backend.services.gemini_service import GeminiService
 from backend.logging_config import logger
 
 router = APIRouter(prefix="/api/cases", tags=["Cases & Ingestion"])
@@ -161,5 +162,48 @@ def delete_case(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete case '{case_id}': {str(e)}"
         )
+
+
+@router.get("/{case_id}/ai-dossier", summary="Generate AI Executive Case Dossier")
+def get_case_ai_dossier(case_id: str):
+    """Generates an executive case dossier using Gemini AI or graph heuristic fallback."""
+    try:
+        with db.get_session() as session:
+            dossier = GeminiService.generate_case_brief(session=session, case_id=case_id)
+            findings = []
+            if dossier.key_suspects:
+                findings.append(f"Primary Targets / Suspects: {', '.join(dossier.key_suspects)}")
+            if dossier.modus_operandi:
+                findings.append(f"Modus Operandi: {dossier.modus_operandi}")
+            for anom in (dossier.critical_anomalies or []):
+                findings.append(f"Graph Anomaly: {anom}")
+            for lead in (dossier.investigative_leads or []):
+                findings.append(f"Investigative Lead: {lead}")
+
+            return {
+                "case_id": dossier.case_id,
+                "case_name": dossier.case_name,
+                "status": dossier.status,
+                "risk_level": dossier.risk_level,
+                "executive_summary": dossier.executive_summary,
+                "modus_operandi": dossier.modus_operandi,
+                "key_suspects": dossier.key_suspects,
+                "critical_anomalies": dossier.critical_anomalies,
+                "investigative_leads": dossier.investigative_leads,
+                "key_findings": findings,
+                "ai_model": dossier.ai_model,
+                "title": f"AI Executive Dossier: {dossier.case_name}"
+            }
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))
+    except ServiceUnavailable as se:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(se))
+    except Exception as e:
+        logger.exception(f"Error generating AI dossier for case '{case_id}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate AI dossier: {str(e)}"
+        )
+
 
 

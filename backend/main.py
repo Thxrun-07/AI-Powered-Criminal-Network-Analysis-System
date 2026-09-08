@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -60,6 +61,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount compiled static assets from Vite build if present
+dist_path = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+assets_path = dist_path / "assets"
+if assets_path.exists():
+    app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
+
 # Global Error Handlers
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -114,10 +121,15 @@ app.include_router(events_router)
 
 @app.get("/", response_class=HTMLResponse, tags=["Dashboard"])
 def serve_dashboard():
-    """Serves the interactive Analyst Dashboard UI from frontend/ or templates/."""
+    """Serves the interactive Analyst Dashboard UI from frontend/dist or templates/."""
+    # Priority 1: Compiled React 19 Vite dist
+    if dist_path.exists() and (dist_path / "index.html").exists():
+        return (dist_path / "index.html").read_text(encoding="utf-8")
+    # Priority 2: Raw frontend/index.html
     frontend_path = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
     if frontend_path.exists():
         return frontend_path.read_text(encoding="utf-8")
+    # Priority 3: Fallback to embedded template
     template_path = Path(__file__).resolve().parent / "templates" / "index.html"
     if template_path.exists():
         return template_path.read_text(encoding="utf-8")

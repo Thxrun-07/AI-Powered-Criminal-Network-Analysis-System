@@ -13,3 +13,7 @@ htmlcov/
 dist/
 build/
 .mypy_cache/
+node_modules/
+
+# Allow compiled React frontend dist for Render deployment
+!frontend/dist/

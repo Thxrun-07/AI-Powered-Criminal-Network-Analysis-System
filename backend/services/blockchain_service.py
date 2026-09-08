@@ -323,10 +323,12 @@ class BlockchainService:
                 "total_blocks": 0
             }
 
-        # Query current Neo4j graph entities for case
+        # Query current Neo4j graph entities and relationships for case
         cypher = """
         MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(n)
-        RETURN labels(n) as labels, properties(n) as props
+        OPTIONAL MATCH (n)-[r]->(m)
+        WHERE r.case_id = $case_id OR $case_id IN n.case_ids
+        RETURN labels(n) as labels, properties(n) as node_props, type(r) as rel_type, properties(r) as rel_props
         ORDER BY elementId(n)
         """
         rows = session.run(cypher, {"case_id": case_id}).data()
@@ -337,14 +339,88 @@ class BlockchainService:
         # Audit ledger integrity
         ledger_health = cls.verify_ledger_integrity()
 
+        # Document-level domain tampering analysis
+        tampered_doc_types = set()
+
+        # Check block hash validity for each block in case_blocks
+        for b in case_blocks:
+            if b.hash != b.calculate_hash():
+                tampered_doc_types.add(b.document_type)
+
+        # Domain 1: CDR Call Logs & Telecom Evidence
+        cdr_cypher = """
+        MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(p1:Phone)
+        OPTIONAL MATCH (p1)-[r:CALLED]->(p2:Phone)
+        RETURN properties(p1) as p1_props, properties(r) as r_props
+        """
+        cdr_rows = session.run(cdr_cypher, {"case_id": case_id}).data()
+        if any("[TAMPERED" in str(r) for r in cdr_rows):
+            tampered_doc_types.add("CDR_LOG")
+
+        # Domain 2: FIR Complaint Records
+        fir_cypher = """
+        MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(f:FIR)
+        RETURN properties(f) as f_props
+        """
+        fir_rows = session.run(fir_cypher, {"case_id": case_id}).data()
+        if any("[TAMPERED" in str(r) for r in fir_rows):
+            tampered_doc_types.add("FIR")
+
+        # Domain 3: Bank Account Statements & Financial Transactions
+        bank_cypher = """
+        MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(b:BankAccount)
+        OPTIONAL MATCH (b)-[r:TRANSFERRED_TO]->(b2:BankAccount)
+        RETURN properties(b) as b_props, properties(r) as r_props
+        """
+        bank_rows = session.run(bank_cypher, {"case_id": case_id}).data()
+        if any("[TAMPERED" in str(r) for r in bank_rows):
+            tampered_doc_types.add("BANK_STATEMENT")
+
+        # Domain 4: Surveillance Field Logs
+        surv_cypher = """
+        MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(l:Location)
+        RETURN properties(l) as l_props
+        """
+        surv_rows = session.run(surv_cypher, {"case_id": case_id}).data()
+        if any("[TAMPERED" in str(r) for r in surv_rows):
+            tampered_doc_types.add("SURVEILLANCE_LOG")
+
+        # Domain 5: Intelligence Reports
+        intel_cypher = """
+        MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(s:SourceRecord)
+        RETURN properties(s) as s_props
+        """
+        intel_rows = session.run(intel_cypher, {"case_id": case_id}).data()
+        if any("[TAMPERED" in str(r) for r in intel_rows):
+            tampered_doc_types.add("INTEL_REPORT")
+
+        # Domain 6: Master Case Dossier & Suspect People
+        people_cypher = """
+        MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(p:Person)
+        RETURN properties(p) as p_props
+        """
+        people_rows = session.run(people_cypher, {"case_id": case_id}).data()
+        if any("[TAMPERED" in str(r) for r in people_rows):
+            tampered_doc_types.add("CASE_MASTER")
+
+        case_blocks_valid = all(b.hash == b.calculate_hash() for b in case_blocks)
+        tampered_list = sorted(list(tampered_doc_types))
+        status = "INTACT" if not tampered_list and case_blocks_valid else "TAMPERED"
+
+        master_blocks = [b for b in case_blocks if b.document_type == "CASE_MASTER"]
+        target_block = master_blocks[0] if master_blocks else latest_case_block
+
         return {
             "case_id": case_id,
-            "status": "INTACT" if ledger_health["valid"] else "TAMPERED",
+            "status": status,
+            "tampered_document_types": tampered_list,
             "evidence_blocks_count": len(case_blocks),
             "latest_block_index": latest_case_block.index,
             "latest_block_hash": latest_case_block.hash,
-            "merkle_root": latest_case_block.merkle_root,
+            "merkle_root": target_block.merkle_root,
             "graph_fingerprint": graph_fingerprint,
+            "fingerprint_match": len(tampered_list) == 0,
+            "case_blocks_valid": case_blocks_valid,
             "ledger_valid": ledger_health["valid"],
             "verification_timestamp": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
         }

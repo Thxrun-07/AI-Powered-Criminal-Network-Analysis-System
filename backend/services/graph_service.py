@@ -396,6 +396,7 @@ class GraphService:
 
     @classmethod
     def get_case_summary(cls, session: Session, case_id: str) -> Optional[Dict[str, Any]]:
+        # 1. Fetch Case node
         cypher_case = """
         MATCH (c:Case {case_id: $case_id})
         RETURN c
@@ -405,6 +406,69 @@ class GraphService:
             return None
         case_node = dict(case_res[0]["c"])
 
+        # 2. Extract FIR node details if linked
+        fir_res = session.run("""
+            MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(f:FIR)
+            RETURN f.fir_number as fir_num, f.incident_date as inc_date, f.offense as offense
+            LIMIT 1
+        """, {"case_id": case_id}).single()
+        
+        fir_number = None
+        incident_date = None
+        if fir_res:
+            fir_number = fir_res.get("fir_num")
+            incident_date = fir_res.get("inc_date")
+
+        if not fir_number:
+            fir_number = case_node.get("fir_number")
+        if not fir_number:
+            c_name = str(case_node.get("case_name") or "")
+            if "FIR" in c_name:
+                import re
+                m = re.search(r'FIR[/_\-\s]?(\w+[/_\-]?\w*)', c_name, re.IGNORECASE)
+                fir_number = m.group(0) if m else c_name
+            else:
+                fir_number = f"FIR/{case_id}"
+
+        # Formatted date
+        case_date = incident_date or case_node.get("incident_date") or case_node.get("created_at") or "2026-09-02"
+        if isinstance(case_date, str) and "T" in case_date:
+            case_date = case_date.split("T")[0]
+
+        # Crime Category
+        category_of_crime = case_node.get("case_type") or case_node.get("category") or "Criminal Network Investigation"
+
+        # 3. People (Suspects vs Victims categorization)
+        people_res = session.run("""
+            MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(p:Person)
+            OPTIONAL MATCH (p)-[r]-(x) WHERE r.case_id = $case_id
+            RETURN p.name as name, p.roles as roles, p.role as role, p.person_id as person_id, count(r) as degree
+            ORDER BY degree DESC
+        """, {"case_id": case_id}).data()
+
+        suspects = []
+        victims = []
+        for p in people_res:
+            p_name = p.get("name") or p.get("person_id") or "Unknown Person"
+            roles = [str(r).lower() for r in (p.get("roles") or [])]
+            if p.get("role"):
+                roles.append(str(p["role"]).lower())
+
+            person_entry = {
+                "name": p_name,
+                "person_id": p.get("person_id"),
+                "roles": p.get("roles") or ([p["role"]] if p.get("role") else ["Actor"]),
+                "degree": p.get("degree", 0)
+            }
+
+            if any(s in roles for s in ["victim", "complainant"]):
+                victims.append(person_entry)
+            elif any(s in roles for s in ["suspect", "accused", "director", "shooter", "organizer", "courier", "mule", "operator"]):
+                suspects.append(person_entry)
+            else:
+                suspects.append(person_entry)
+
+        # 4. Entity breakdown and collected evidences
         cypher_counts = """
         MATCH (c:Case {case_id: $case_id})-[:INVOLVES]->(n)
         RETURN labels(n)[0] as label, count(n) as count
@@ -412,8 +476,108 @@ class GraphService:
         counts_res = session.run(cypher_counts, {"case_id": case_id}).data()
         entity_breakdown = {r["label"]: r["count"] for r in counts_res if r.get("label")}
 
+        evidences_collected = []
+        if entity_breakdown.get("Phone"):
+            evidences_collected.append({
+                "type": "CDR_LOGS",
+                "name": f"{entity_breakdown['Phone']} Phone Numbers & CDR Telecom Records",
+                "count": entity_breakdown["Phone"],
+                "icon": "📞"
+            })
+        if entity_breakdown.get("BankAccount") or entity_breakdown.get("Transaction"):
+            fin_cnt = entity_breakdown.get("BankAccount", 0) + entity_breakdown.get("Transaction", 0)
+            evidences_collected.append({
+                "type": "FINANCIAL",
+                "name": f"{fin_cnt} Bank Statements & Transaction Records",
+                "count": fin_cnt,
+                "icon": "💳"
+            })
+        if entity_breakdown.get("Location") or entity_breakdown.get("CellTower"):
+            surv_cnt = entity_breakdown.get("Location", 0) + entity_breakdown.get("CellTower", 0)
+            evidences_collected.append({
+                "type": "SURVEILLANCE",
+                "name": f"{surv_cnt} Surveillance Field Logs & Cell Tower Geotags",
+                "count": surv_cnt,
+                "icon": "📍"
+            })
+        if entity_breakdown.get("Vehicle"):
+            evidences_collected.append({
+                "type": "VEHICLE",
+                "name": f"{entity_breakdown['Vehicle']} Registered Vehicle & ANPR Records",
+                "count": entity_breakdown["Vehicle"],
+                "icon": "🚗"
+            })
+        if entity_breakdown.get("FIR"):
+            evidences_collected.append({
+                "type": "LEGAL",
+                "name": "Registered Police FIR Complaint Record",
+                "count": 1,
+                "icon": "📜"
+            })
+        if entity_breakdown.get("PriorCase"):
+            evidences_collected.append({
+                "type": "CRIMINAL_HISTORY",
+                "name": f"{entity_breakdown['PriorCase']} Prior Criminal Case Dockets",
+                "count": entity_breakdown["PriorCase"],
+                "icon": "📂"
+            })
+        if entity_breakdown.get("SourceRecord"):
+            evidences_collected.append({
+                "type": "INTELLIGENCE",
+                "name": "Field Informant Intelligence Source Log",
+                "count": entity_breakdown["SourceRecord"],
+                "icon": "📄"
+            })
+        if not evidences_collected:
+            evidences_collected.append({
+                "type": "GENERAL",
+                "name": f"{sum(entity_breakdown.values())} Network Graph Entities",
+                "count": sum(entity_breakdown.values()),
+                "icon": "🔍"
+            })
+
+        # 5. Cross-Case Overlap Query
+        overlap_cypher = """
+        MATCH (c1:Case {case_id: $case_id})-[:INVOLVES]->(e)<-[:INVOLVES]-(c2:Case)
+        WHERE c2.case_id <> $case_id
+        RETURN c2.case_id as id, c2.case_name as name, count(DISTINCT e) as shared_count,
+               collect(DISTINCT coalesce(e.name, e.phone_number, e.account_number, elementId(e)))[0..4] as sample_entities
+        ORDER BY shared_count DESC
+        """
+        overlap_res = session.run(overlap_cypher, {"case_id": case_id}).data()
+        overlapping_cases = []
+        for o in overlap_res:
+            overlapping_cases.append({
+                "case_id": o["id"],
+                "case_name": o.get("name") or o["id"],
+                "shared_count": o["shared_count"],
+                "sample_entities": [str(x) for x in (o.get("sample_entities") or [])]
+            })
+
+        case_overlap = {
+            "has_overlap": len(overlapping_cases) > 0,
+            "overlap_count": len(overlapping_cases),
+            "overlapping_cases": overlapping_cases
+        }
+
         return {
             "case_id": case_id,
+            "case_name": case_node.get("case_name") or f"Case {case_id}",
+            "case_type": case_node.get("case_type") or "Criminal Investigation",
+            "fir_number": fir_number,
+            "date": case_date,
+            "incident_date": case_date,
+            "category_of_crime": category_of_crime,
+            "status": case_node.get("status") or "OPEN",
+            "priority": case_node.get("priority") or "MEDIUM",
+            "lead_investigator": case_node.get("lead_investigator") or case_node.get("investigator") or "Special Investigation Team",
+            "jurisdiction": case_node.get("jurisdiction") or "Law Enforcement",
+            "summary": case_node.get("summary") or "Forensic case dossier records active graph connections across subjects, financial flows, and telecom communications.",
+            "created_at": case_node.get("created_at") or case_date,
+            "primary_suspects": suspects,
+            "victims": victims,
+            "evidences_collected": evidences_collected,
+            "case_overlap": case_overlap,
             "metadata": case_node,
             "entity_breakdown": entity_breakdown,
             "total_entities": sum(entity_breakdown.values())
