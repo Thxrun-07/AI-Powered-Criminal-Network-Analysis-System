@@ -97,7 +97,14 @@ def list_cases(
         with db.get_session() as session:
             return GraphService.list_cases(session, status=status_filter, limit=limit, offset=offset)
     except ServiceUnavailable as se:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(se))
+        logger.warning(f"Neo4j connection dropped in list_cases ({se}), reconnecting...")
+        try:
+            db.reconnect()
+            with db.get_session() as session:
+                return GraphService.list_cases(session, status=status_filter, limit=limit, offset=offset)
+        except Exception as retry_err:
+            logger.error(f"Reconnection failed in list_cases: {retry_err}")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(retry_err))
 
 
 @router.get("/{case_id}", summary="Get Case Summary & Entity Statistics")
@@ -111,8 +118,25 @@ def get_case(case_id: str):
                     detail=f"Case with ID '{case_id}' not found."
                 )
             return case_info
+    except HTTPException:
+        raise
     except ServiceUnavailable as se:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(se))
+        logger.warning(f"Neo4j connection dropped in get_case ({se}), reconnecting...")
+        try:
+            db.reconnect()
+            with db.get_session() as session:
+                case_info = GraphService.get_case_summary(session, case_id)
+                if not case_info:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Case with ID '{case_id}' not found."
+                    )
+                return case_info
+        except HTTPException:
+            raise
+        except Exception as retry_err:
+            logger.error(f"Reconnection failed in get_case: {retry_err}")
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(retry_err))
 
 
 @router.delete("/reset", summary="Dev Utility: Reset All Graph Data")

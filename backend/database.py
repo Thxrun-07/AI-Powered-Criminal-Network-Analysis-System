@@ -16,7 +16,10 @@ class Neo4jDatabase:
                 driver_kwargs = {
                     "auth": (settings.NEO4J_USERNAME, settings.NEO4J_PASSWORD),
                     "max_connection_pool_size": settings.NEO4J_MAX_CONNECTION_POOL_SIZE,
-                    "connection_timeout": 5.0,
+                    "connection_timeout": 15.0,
+                    "max_connection_lifetime": 180,  # Recycle connections every 3 mins to prevent idle cloud drops
+                    "keep_alive": True,  # Keep TCP socket alive across cloud NAT/firewalls
+                    "liveness_check_timeout": 1.0,  # Probe idle pooled connections before reusing
                 }
                 if hasattr(neo4j, "NotificationMinimumSeverity"):
                     driver_kwargs["notifications_min_severity"] = getattr(neo4j, "NotificationMinimumSeverity").OFF
@@ -30,9 +33,17 @@ class Neo4jDatabase:
 
     def close(self):
         if self._driver is not None:
-            self._driver.close()
+            try:
+                self._driver.close()
+            except Exception:
+                pass
             self._driver = None
             logger.info("Neo4j driver connection closed.")
+
+    def reconnect(self) -> Driver:
+        """Forces the driver pool to reset and reconnects cleanly."""
+        self.close()
+        return self.connect()
 
     def get_session(self, database: Optional[str] = None) -> Session:
         driver = self.connect()
@@ -83,13 +94,31 @@ class Neo4jDatabase:
                     "latency_ms": latency_ms
                 }
         except Exception as e:
-            logger.error(f"Health check failed: {e}")
-            return {
-                "status": "unhealthy",
-                "database": settings.NEO4J_DATABASE,
-                "error": str(e),
-                "latency_ms": round((time.time() - start_time) * 1000, 2)
-            }
+            logger.warning(f"Health check failed ({e}), attempting auto-reconnect...")
+            try:
+                self.reconnect()
+                with self.get_session() as session:
+                    result = session.run("CALL dbms.components() YIELD name, versions, edition RETURN name, versions, edition")
+                    records = list(result)
+                    record = records[0] if records else None
+                    latency_ms = round((time.time() - start_time) * 1000, 2)
+                    return {
+                        "status": "healthy",
+                        "database": settings.NEO4J_DATABASE,
+                        "version": record["versions"][0] if record and record["versions"] else "unknown",
+                        "edition": record["edition"] if record else "community",
+                        "gds_available": False,
+                        "gds_version": None,
+                        "latency_ms": latency_ms
+                    }
+            except Exception as retry_err:
+                logger.error(f"Health check reconnect retry also failed: {retry_err}")
+                return {
+                    "status": "unhealthy",
+                    "database": settings.NEO4J_DATABASE,
+                    "error": str(retry_err),
+                    "latency_ms": round((time.time() - start_time) * 1000, 2)
+                }
 
 
 db = Neo4jDatabase()

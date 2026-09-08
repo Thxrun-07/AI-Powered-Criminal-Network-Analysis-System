@@ -77,7 +77,7 @@ export function Topbar({ view, health, theme, toggleTheme, setSidebarOpen }) {
       <div className="topbar-actions">
         <div className="status-pill">
           <span className={`status-dot ${health ? 'ok' : 'bad'}`}></span>
-          <span>{health ? `${health.database || 'neo4j'} · Neo4j ${health.version || ''}` : 'Connecting…'}</span>
+          <span>{health ? 'Database Active' : 'Connecting…'}</span>
           {health && <span className="status-meta">{Math.round(health.latency_ms)}ms</span>}
         </div>
         <button className="theme-btn" onClick={toggleTheme} title="Toggle Theme">
