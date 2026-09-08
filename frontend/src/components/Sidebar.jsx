@@ -19,7 +19,15 @@ export function Sidebar({ view, changeView, theme, toggleTheme, sidebarOpen, set
       <div className="nav-label">Analytics Modules</div>
       <nav className="nav">
         {NAV.map(n => (
-          <button key={n.id} className={`nav-item ${view === n.id ? 'active' : ''}`} onClick={() => changeView(n.id)}>
+          <button
+            key={n.id}
+            type="button"
+            className={`nav-item ${view === n.id ? 'active' : ''}`}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              changeView(n.id);
+            }}
+          >
             <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={n.icon}/></svg>
             <span>{n.label}</span>
           </button>

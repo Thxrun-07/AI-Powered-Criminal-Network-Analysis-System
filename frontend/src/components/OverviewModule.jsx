@@ -48,7 +48,13 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
       } catch (e) {}
     }
     loadData();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      if (chartInstance1.current) {
+        chartInstance1.current.destroy();
+        chartInstance1.current = null;
+      }
+    };
   }, [cases, insights.length, setInsights]);
 
   useEffect(() => {
@@ -70,6 +76,12 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
       });
     }
+    return () => {
+      if (chartInstance2.current) {
+        chartInstance2.current.destroy();
+        chartInstance2.current = null;
+      }
+    };
   }, [insights]);
 
   const isHealthy = health?.status === 'healthy';

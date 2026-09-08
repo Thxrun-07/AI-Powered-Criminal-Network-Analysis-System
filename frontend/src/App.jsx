@@ -40,17 +40,25 @@ export default function App() {
   useEffect(() => {
     const handleHashChange = () => {
       const h = location.hash.replace('#', '');
-      if (NAV.find(n => n.id === h)) setView(h);
+      if (NAV.find(n => n.id === h)) {
+        setView(prev => (prev === h ? prev : h));
+      }
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const changeView = (newView) => {
-    setView(newView);
+  const changeView = useCallback((newView) => {
+    setView(prev => {
+      if (prev === newView) return prev;
+      return newView;
+    });
     setSidebarOpen(false);
-    location.hash = newView;
-  };
+    if (window.location.hash !== `#${newView}`) {
+      window.history.replaceState(null, '', `#${newView}`);
+    }
+    window.scrollTo(0, 0);
+  }, []);
 
   const addToast = useCallback((msg, type = 'info') => {
     const id = Date.now() + Math.random();
@@ -147,7 +155,7 @@ export default function App() {
           />
 
           {/* View Component Dispatcher */}
-          <div key={view} className="fade-in">
+          <div key={view} className="view-pane">
             {view === 'overview' && <OverviewModule cases={cases} health={health} insights={insights} setInsights={setInsights} changeView={changeView} openAiDossier={openAiDossierModal} />}
             {view === 'graph' && <GraphExplorerModule cases={cases} selectedCase={selectedCase} setSelectedCase={setSelectedCase} openEntityModal={openEntityModal} addToast={addToast} theme={theme} />}
             {view === 'search' && <EntitySearchModule openEntityModal={openEntityModal} addToast={addToast} />}

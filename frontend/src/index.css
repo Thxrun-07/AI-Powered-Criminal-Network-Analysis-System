@@ -131,7 +131,7 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: auto; }
 body {
   font-family: var(--font);
   color: var(--text);
@@ -181,16 +181,18 @@ input, select, textarea { font-family: var(--font); color: var(--text); }
 .nav { display: flex; flex-direction: column; gap: 4px; flex: 1; overflow-y: auto; }
 .nav-item {
   display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 13px; color: var(--text-dim);
-  font-size: 13.5px; font-weight: 600; transition: .18s; position: relative; border: 1px solid transparent; background: transparent;
-  width: 100%; text-align: left;
+  font-size: 13.5px; font-weight: 600; transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease; position: relative; border: 1px solid transparent; background: transparent;
+  width: 100%; text-align: left; -webkit-tap-highlight-color: transparent; user-select: none;
 }
-.nav-item:hover { color: var(--text); background: var(--surface-hover); }
+.nav-item:focus { outline: none; }
+.nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nav-item:not(.active):hover { color: var(--text); background: var(--surface-hover); }
 .nav-item.active {
-  color: #fff; border-color: var(--border-strong);
+  color: #fff !important; border-color: var(--border-strong);
   background: var(--accent-gradient);
   box-shadow: var(--shadow-card), 0 4px 16px -4px var(--accent-glow);
 }
-[data-theme="light"] .nav-item.active { color: #fff; }
+[data-theme="light"] .nav-item.active { color: #fff !important; }
 .nav-item svg { width: 18px; height: 18px; stroke: currentColor; flex-shrink: 0; }
 
 .side-foot { padding: 14px 10px 6px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-faint); line-height: 1.6; }
@@ -580,5 +582,9 @@ tbody tr:hover td { color: var(--text); }
 ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.45); }
 
-.fade-in { animation: fadeIn .35s ease; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1); will-change: opacity; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.view-pane { animation: viewFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1); will-change: opacity; }
+@keyframes viewFadeIn { from { opacity: 0; } to { opacity: 1; } }
+

@@ -7,6 +7,7 @@ export function CaseRegistryModule({ cases, fetchCases, selectedCase, setSelecte
   const [caseDetail, setCaseDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const miniGraphRef = useRef(null);
+  const miniNetworkInstanceRef = useRef(null);
 
   const filteredCases = useMemo(() => {
     if (!statusFilter) return cases;
@@ -68,20 +69,31 @@ export function CaseRegistryModule({ cases, fetchCases, selectedCase, setSelecte
           });
         });
 
+        if (miniNetworkInstanceRef.current) {
+          miniNetworkInstanceRef.current.destroy();
+          miniNetworkInstanceRef.current = null;
+        }
+
         const seed = getDeterministicSeed(caseDetail.case_id);
-        new vis.Network(miniGraphRef.current, { nodes, edges }, {
+        miniNetworkInstanceRef.current = new vis.Network(miniGraphRef.current, { nodes, edges }, {
           layout: { randomSeed: seed, improvedLayout: true },
           physics: {
             solver: 'forceAtlas2Based',
             forceAtlas2Based: { gravitationalConstant: -55, centralGravity: 0.015, springLength: 150, springConstant: 0.07, damping: 0.52, avoidOverlap: 0.85 },
-            stabilization: { iterations: 140 }
+            stabilization: { enabled: true, iterations: 40, updateInterval: 20 }
           },
           nodes: { borderWidth: 2 }, edges: { width: 1.2 }
         });
       } catch (e) {}
     }
     renderMiniGraph();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      if (miniNetworkInstanceRef.current) {
+        miniNetworkInstanceRef.current.destroy();
+        miniNetworkInstanceRef.current = null;
+      }
+    };
   }, [caseDetail, theme]);
 
   return (

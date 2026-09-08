@@ -157,7 +157,18 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     }
 
     const net = new vis.Network(containerRef.current, { nodes, edges }, {
-      layout: layoutOpts, physics: physicsOpts, nodes: { borderWidth: 2 }, edges: { width: 1.4 },
+      layout: layoutOpts,
+      physics: {
+        ...physicsOpts,
+        stabilization: {
+          enabled: true,
+          iterations: 50,
+          updateInterval: 25,
+          fit: true
+        }
+      },
+      nodes: { borderWidth: 2 },
+      edges: { width: 1.4 },
       interaction: { hover: true, tooltipDelay: 100, navigationButtons: true, keyboard: true }
     });
 
@@ -170,6 +181,11 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     });
 
     networkRef.current = net;
+
+    return () => {
+      if (net) net.destroy();
+      networkRef.current = null;
+    };
   }, [graphNodes, graphEdges, layoutType, edgeLabelMode, hideIsolated, physicsEnabled, theme, caseFilter]);
 
   const handleAiQuerySubmit = async (e, promptOverride = null) => {
