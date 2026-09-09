@@ -1,12 +1,21 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import Chart from 'chart.js/auto';
-import { API, esc } from '../services/api.js';
+import { API, esc, Case, Insight, HealthStatus } from '../services/api';
 
-export function OverviewModule({ cases, health, insights, setInsights, changeView, openAiDossier }) {
-  const chartRef1 = useRef(null);
-  const chartRef2 = useRef(null);
-  const chartInstance1 = useRef(null);
-  const chartInstance2 = useRef(null);
+export interface OverviewModuleProps {
+  cases: Case[];
+  health: HealthStatus | null;
+  insights: Insight[];
+  setInsights: (insights: Insight[]) => void;
+  changeView: (view: string) => void;
+  openAiDossier: (caseId: string, caseName: string) => void;
+}
+
+export function OverviewModule({ cases, health, insights, setInsights, changeView, openAiDossier }: OverviewModuleProps) {
+  const chartRef1 = useRef<HTMLCanvasElement>(null);
+  const chartRef2 = useRef<HTMLCanvasElement>(null);
+  const chartInstance1 = useRef<Chart | null>(null);
+  const chartInstance2 = useRef<Chart | null>(null);
 
   const openCasesCount = useMemo(() => cases.filter(x => String(x.status || 'OPEN').toUpperCase() !== 'CLOSED').length, [cases]);
   const totalEntities = useMemo(() => cases.reduce((s, x) => s + (x.total_entities || 0), 0), [cases]);
@@ -18,16 +27,16 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
       if (!insights.length && cases.length) {
         try {
           const topCases = cases.slice(0, 4);
-          const res = await Promise.all(topCases.map(c => API.get(`/api/cases/${encodeURIComponent(c.case_id)}/insights`).catch(() => [])));
+          const res = await Promise.all(topCases.map(c => API.get<Insight[]>(`/api/cases/${encodeURIComponent(c.case_id)}/insights`).catch(() => [] as Insight[])));
           if (isMounted) setInsights(res.flat());
         } catch (e) {}
       }
       try {
-        const g = await API.get('/api/graph?limit=500');
+        const g = await API.get<{ nodes?: Array<{ labels?: string[] }> }>('/api/graph?limit=500');
         if (!isMounted) return;
-        const counts = {};
+        const counts: Record<string, number> = {};
         (g.nodes || []).forEach(n => {
-          const l = n.labels[0] || 'Entity';
+          const l = n.labels?.[0] || 'Entity';
           counts[l] = (counts[l] || 0) + 1;
         });
         if (chartRef1.current) {
@@ -58,9 +67,10 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
   }, [cases, insights.length, setInsights]);
 
   useEffect(() => {
-    const sev = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    const sev: Record<string, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
     (insights || []).forEach(i => {
-      if (sev[i.severity] !== undefined) sev[i.severity]++;
+      const s = (i.severity || '').toUpperCase();
+      if (sev[s] !== undefined) sev[s]++;
     });
     if (chartRef2.current) {
       if (chartInstance2.current) chartInstance2.current.destroy();
@@ -88,23 +98,23 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
 
   return (
     <div>
-      <div className="cards-grid">
-        <div className="stat-card" style={{'--glow': 'rgba(0, 210, 255, 0.28)'}}>
+      <div className="cards-grid grid gap-4">
+        <div className="stat-card" style={{'--glow': 'rgba(0, 210, 255, 0.28)'} as React.CSSProperties}>
           <div className="stat-label">Cases in Database</div>
           <div className="stat-value">{cases.length}</div>
           <div className="stat-foot"><small>{openCasesCount} active / open</small></div>
         </div>
-        <div className="stat-card" style={{'--glow': 'rgba(99, 102, 241, 0.25)'}}>
+        <div className="stat-card" style={{'--glow': 'rgba(99, 102, 241, 0.25)'} as React.CSSProperties}>
           <div className="stat-label">Total Entities</div>
           <div className="stat-value">{totalEntities.toLocaleString()}</div>
           <div className="stat-foot"><small>indexed in graph</small></div>
         </div>
-        <div className="stat-card" style={{'--glow': 'rgba(245, 158, 11, 0.25)'}}>
+        <div className="stat-card" style={{'--glow': 'rgba(245, 158, 11, 0.25)'} as React.CSSProperties}>
           <div className="stat-label">Forensic Insights</div>
           <div className="stat-value">{insights.length}</div>
           <div className="stat-foot"><small>{critInsights} critical threats</small></div>
         </div>
-        <div className="stat-card" style={{'--glow': isHealthy ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}}>
+        <div className="stat-card" style={{'--glow': isHealthy ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'} as React.CSSProperties}>
           <div className="stat-label">Database State</div>
           <div className="stat-value" style={{fontSize: '22px'}}>{isHealthy ? 'Connected' : 'Offline'}</div>
           <div className="stat-foot">
@@ -113,29 +123,29 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
         </div>
       </div>
 
-      <div className="cards-grid" style={{gridTemplateColumns: '2fr 1fr'}}>
+      <div className="cards-grid grid gap-4" style={{gridTemplateColumns: '2fr 1fr'}}>
         <div className="card">
-          <div className="card-header"><div className="card-title">Entity Distribution by Type</div></div>
+          <div className="card-header flex items-center justify-between"><div className="card-title font-semibold">Entity Distribution by Type</div></div>
           <div style={{position:'relative', height:'270px'}}><canvas ref={chartRef1}></canvas></div>
         </div>
         <div className="card">
-          <div className="card-header"><div className="card-title">Threat Severity Mix</div></div>
+          <div className="card-header flex items-center justify-between"><div className="card-title font-semibold">Threat Severity Mix</div></div>
           <div style={{position:'relative', height:'270px'}}><canvas ref={chartRef2}></canvas></div>
         </div>
       </div>
 
       <div className="card">
-        <div className="card-header">
+        <div className="card-header flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <div className="card-title">Active Investigations</div>
+            <div className="card-title font-semibold">Active Investigations</div>
             <div style={{fontSize:'12px', color:'var(--text-faint)', marginTop:'2px'}}>Direct live stream from connected Neo4j knowledge graph</div>
           </div>
-          <button className="neu-btn ghost" onClick={() => changeView('cases')}>View all cases →</button>
+          <button className="neu-btn ghost transition hover:opacity-90" onClick={() => changeView('cases')}>View all cases →</button>
         </div>
         {!cases.length ? (
           <div className="empty">
             <svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
-            No cases registered yet. <a href="#" onClick={(e) => { e.preventDefault(); changeView('ingest'); }}>Ingest case data to get started →</a>
+            No cases registered yet. <a href="#" onClick={(e: React.MouseEvent<HTMLAnchorElement>) => { e.preventDefault(); changeView('ingest'); }}>Ingest case data to get started →</a>
           </div>
         ) : (
           <div className="tbl-wrap">
@@ -147,8 +157,8 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
                 {cases.slice(0, 6).map(x => (
                   <tr key={x.case_id} style={{cursor:'pointer'}} onClick={() => changeView('cases')}>
                     <td>
-                      <div style={{fontWeight:700, color:'var(--text)'}}>{esc(x.case_name || x.case_id)}</div>
-                      <div className="mono" style={{color:'var(--text-faint)'}}>{esc(x.case_id)}</div>
+                      <div className="font-bold" style={{fontWeight:700, color:'var(--text)'}}>{esc(x.case_name || x.case_id)}</div>
+                      <div className="mono text-xs" style={{color:'var(--text-faint)'}}>{esc(x.case_id)}</div>
                     </td>
                     <td>{esc(x.case_type || '—')}</td>
                     <td className="mono">{x.total_entities}</td>

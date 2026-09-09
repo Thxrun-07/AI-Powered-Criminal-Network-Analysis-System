@@ -1,24 +1,33 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as vis from 'vis-network/standalone';
-import { API, esc, LABEL_COLOR, getNodeLevel, getDeterministicSeed } from '../services/api.js';
+import { API, esc, LABEL_COLOR, getNodeLevel, getDeterministicSeed, Case, GraphNode, GraphEdge, AiChatMessage, ThemeMode } from '../services/api';
 
-export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, openEntityModal, addToast, theme }) {
-  const containerRef = useRef(null);
-  const networkRef = useRef(null);
-  const [caseFilter, setCaseFilter] = useState(selectedCase || '');
-  const [layoutType, setLayoutType] = useState('structured');
-  const [edgeLabelMode, setEdgeLabelMode] = useState('clean');
-  const [limit, setLimit] = useState(1200);
-  const [hideIsolated, setHideIsolated] = useState(false);
-  const [physicsEnabled, setPhysicsEnabled] = useState(true);
-  const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
-  const [graphNodes, setGraphNodes] = useState([]);
-  const [graphEdges, setGraphEdges] = useState([]);
-  const [selectedNode, setSelectedNode] = useState(null);
-  const [loading, setLoading] = useState(false);
+export interface GraphExplorerModuleProps {
+  cases: Case[];
+  selectedCase: string | null;
+  setSelectedCase: (id: string | null) => void;
+  openEntityModal: (id: string) => void;
+  addToast: (msg: string, type?: string) => void;
+  theme: string;
+}
+
+export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, openEntityModal, addToast, theme }: GraphExplorerModuleProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const networkRef = useRef<any>(null);
+  const [caseFilter, setCaseFilter] = useState<string>(selectedCase || '');
+  const [layoutType, setLayoutType] = useState<string>('structured');
+  const [edgeLabelMode, setEdgeLabelMode] = useState<string>('clean');
+  const [limit, setLimit] = useState<number>(1200);
+  const [hideIsolated, setHideIsolated] = useState<boolean>(false);
+  const [physicsEnabled, setPhysicsEnabled] = useState<boolean>(true);
+  const [aiPanelCollapsed, setAiPanelCollapsed] = useState<boolean>(false);
+  const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
+  const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
   // AI Copilot state
-  const [aiChatLog, setAiChatLog] = useState([
+  const [aiChatLog, setAiChatLog] = useState<AiChatMessage[]>([
     {
       sender: 'bot',
       model: 'Atlas Graph Assistant',
@@ -31,16 +40,16 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
       ]
     }
   ]);
-  const [aiInput, setAiInput] = useState('');
-  const [aiQuerying, setAiQuerying] = useState(false);
+  const [aiInput, setAiInput] = useState<string>('');
+  const [aiQuerying, setAiQuerying] = useState<boolean>(false);
 
   const fetchGraph = useCallback(async () => {
     setLoading(true);
     try {
-      const g = await API.get(`/api/graph?limit=${limit}${caseFilter ? `&case_id=${encodeURIComponent(caseFilter)}` : ''}`);
+      const g = await API.get<{ nodes?: GraphNode[]; edges?: GraphEdge[] }>(`/api/graph?limit=${limit}${caseFilter ? `&case_id=${encodeURIComponent(caseFilter)}` : ''}`);
       setGraphNodes(g.nodes || []);
       setGraphEdges(g.edges || []);
-    } catch (e) {
+    } catch (e: any) {
       addToast(`Failed to load graph: ${e.message}`, 'err');
     } finally {
       setLoading(false);
@@ -64,14 +73,14 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     const edgeColor = isLight ? 'rgba(51, 65, 85, 0.45)' : 'rgba(148, 163, 184, 0.4)';
 
     // Compute degrees
-    const degrees = {};
+    const degrees: Record<string, number> = {};
     (graphEdges || []).forEach(e => {
       degrees[e.source] = (degrees[e.source] || 0) + 1;
       degrees[e.target] = (degrees[e.target] || 0) + 1;
     });
 
-    const seenNodeIds = new Set();
-    const nodes = [];
+    const seenNodeIds = new Set<string>();
+    const nodes: any[] = [];
     (graphNodes || []).forEach(n => {
       if (!n || !n.id || seenNodeIds.has(n.id)) return;
       if (hideIsolated && (degrees[n.id] || 0) <= 1 && !n.labels?.includes('Case')) return;
@@ -88,7 +97,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         shape: 'dot',
         size: isCase ? 22 : (isPerson ? 16 : 12),
         color: {
-          background: LABEL_COLOR[n.labels?.[0]] || '#94a3b8',
+          background: (n.labels?.[0] && LABEL_COLOR[n.labels[0]]) || '#94a3b8',
           border: isLight ? '#ffffff' : '#070a12',
           highlight: { background: '#00d2ff', border: '#ffffff' }
         },
@@ -102,8 +111,8 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
       });
     });
 
-    const seenEdgeIds = new Set();
-    const edges = [];
+    const seenEdgeIds = new Set<string>();
+    const edges: any[] = [];
     (graphEdges || []).forEach((e, idx) => {
       if (!e || !e.source || !e.target) return;
       if (!seenNodeIds.has(e.source) || !seenNodeIds.has(e.target)) return;
@@ -139,8 +148,8 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     });
 
     const seed = getDeterministicSeed(caseFilter || 'all');
-    let layoutOpts = { randomSeed: seed };
-    let physicsOpts = {};
+    let layoutOpts: any = { randomSeed: seed };
+    let physicsOpts: any = {};
 
     if (layoutType === 'hierarchy_ud') {
       layoutOpts.hierarchical = { enabled: true, direction: 'UD', sortMethod: 'directed', levelSeparation: 140, nodeSpacing: 160 };
@@ -172,7 +181,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
       interaction: { hover: true, tooltipDelay: 100, navigationButtons: true, keyboard: true }
     });
 
-    net.on('click', p => {
+    net.on('click', (p: any) => {
       if (p.nodes && p.nodes.length) {
         const targetId = p.nodes[0];
         const nObj = graphNodes.find(n => n.id === targetId);
@@ -188,7 +197,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     };
   }, [graphNodes, graphEdges, layoutType, edgeLabelMode, hideIsolated, physicsEnabled, theme, caseFilter]);
 
-  const handleAiQuerySubmit = async (e, promptOverride = null) => {
+  const handleAiQuerySubmit = async (e?: React.FormEvent | null, promptOverride: string | null = null) => {
     if (e && e.preventDefault) e.preventDefault();
     const q = promptOverride || aiInput.trim();
     if (!q) return;
@@ -198,7 +207,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     setAiQuerying(true);
 
     try {
-      const res = await API.post('/api/graph/ai-query', {
+      const res = await API.post<{ ai_model?: string; answer?: string }>('/api/graph/ai-query', {
         question: q,
         case_id: caseFilter || null,
         nodes_count: graphNodes?.length || null,
@@ -210,7 +219,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         model: res.ai_model || 'AI Copilot',
         content: res.answer || 'No specific inference generated.'
       }]);
-    } catch (err) {
+    } catch (err: any) {
       setAiChatLog(prev => [...prev, {
         sender: 'bot',
         error: true,
@@ -222,7 +231,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
   };
 
   const nodeCounts = useMemo(() => {
-    const counts = {};
+    const counts: Record<string, number> = {};
     (graphNodes || []).forEach(n => {
       const l = n.labels?.[0] || 'Entity';
       counts[l] = (counts[l] || 0) + 1;
@@ -233,22 +242,22 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
   return (
     <div>
       <div className="card">
-        <div className="card-header">
-          <div className="card-title">
+        <div className="card-header flex items-center justify-between gap-3 flex-wrap">
+          <div className="card-title flex items-center gap-2 font-semibold">
             <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round"><path d="M12 3a2 2 0 0 1 2 2c0 .4-.1.8-.3 1.1l3.4 5.4c.3-.1.6-.2.9-.2a2 2 0 1 1 0 4c-.3 0-.6-.1-.9-.2l-3.4 5.4c.2.3.3.7.3 1.1a2 2 0 1 1-3.6-1.1L8.9 15.5c-.3.1-.6.2-.9.2a2 2 0 1 1 0-4c.3 0 .6.1.8.2l3.4-5.4c-.2-.3-.3-.7-.3-1.1a2 2 0 0 1 2-2Z"/></svg>
             Network Topology Explorer
           </div>
-          <div className="row" style={{gap:'10px', alignItems:'flex-end', flexWrap:'wrap'}}>
+          <div className="row flex items-end gap-2.5 flex-wrap" style={{gap:'10px', alignItems:'flex-end', flexWrap:'wrap'}}>
             <div className="field" style={{minWidth:'180px'}}>
               <label>Case Filter</label>
-              <select className="control" value={caseFilter} onChange={e => { setCaseFilter(e.target.value); setSelectedCase(e.target.value); }}>
+              <select className="control" value={caseFilter} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => { setCaseFilter(e.target.value); setSelectedCase(e.target.value || null); }}>
                 <option value="">All Ingested Cases</option>
                 {cases.map(c => <option key={c.case_id} value={c.case_id}>{esc(c.case_name || c.case_id)}</option>)}
               </select>
             </div>
             <div className="field" style={{minWidth:'180px'}}>
               <label>Layout Structure</label>
-              <select className="control" value={layoutType} onChange={e => setLayoutType(e.target.value)}>
+              <select className="control" value={layoutType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLayoutType(e.target.value)}>
                 <option value="structured">🌟 Structured Organic (Reduced Bounce)</option>
                 <option value="hierarchy_ud">🌳 Hierarchical Flow (Top-to-Bottom)</option>
                 <option value="hierarchy_lr">🏛️ Pipeline Flow (Left-to-Right)</option>
@@ -257,7 +266,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
             </div>
             <div className="field" style={{maxWidth:'130px'}}>
               <label>Edge Labels</label>
-              <select className="control" value={edgeLabelMode} onChange={e => setEdgeLabelMode(e.target.value)}>
+              <select className="control" value={edgeLabelMode} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEdgeLabelMode(e.target.value)}>
                 <option value="clean">Clean (Hide INVOLVES)</option>
                 <option value="all">Show All</option>
                 <option value="none">No Edge Text</option>
@@ -265,40 +274,40 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
             </div>
             <div className="field" style={{maxWidth:'110px'}}>
               <label>Limit</label>
-              <select className="control" value={limit} onChange={e => setLimit(Number(e.target.value))}>
+              <select className="control" value={limit} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLimit(Number(e.target.value))}>
                 <option value="300">300</option>
                 <option value="600">600</option>
                 <option value="1200">1200</option>
                 <option value="2500">2500</option>
               </select>
             </div>
-            <div style={{display:'flex', gap:'8px', alignItems:'flex-end'}}>
-              <button className="neu-btn primary" disabled={loading} onClick={fetchGraph}>{loading ? 'Rendering…' : 'Render'}</button>
-              <button className="neu-btn ghost" onClick={() => setAiPanelCollapsed(prev => !prev)} style={{display:'inline-flex', alignItems:'center', gap:'6px', color:'var(--accent)'}}>
+            <div className="flex gap-2 items-end" style={{display:'flex', gap:'8px', alignItems:'flex-end'}}>
+              <button className="neu-btn primary transition hover:opacity-90" disabled={loading} onClick={fetchGraph}>{loading ? 'Rendering…' : 'Render'}</button>
+              <button className="neu-btn ghost transition" onClick={() => setAiPanelCollapsed(prev => !prev)} style={{display:'inline-flex', alignItems:'center', gap:'6px', color:'var(--accent)'}}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
                 <span>{aiPanelCollapsed ? 'Show Copilot' : 'AI Copilot'}</span>
               </button>
-              <button className="neu-btn ghost" onClick={() => { setPhysicsEnabled(p => !p); addToast(physicsEnabled ? 'Physics locked into place' : 'Physics simulation resumed', 'info'); }}>
+              <button className="neu-btn ghost transition" onClick={() => { setPhysicsEnabled(p => !p); addToast(physicsEnabled ? 'Physics locked into place' : 'Physics simulation resumed', 'info'); }}>
                 <span>{physicsEnabled ? '⏸ Pause' : '▶ Live Bounce'}</span>
               </button>
-              <button className="neu-btn ghost" onClick={() => { if (networkRef.current) networkRef.current.fit({animation:{duration:600}}); }}>Fit</button>
+              <button className="neu-btn ghost transition" onClick={() => { if (networkRef.current) networkRef.current.fit({animation:{duration:600}}); }}>Fit</button>
             </div>
           </div>
         </div>
 
-        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'14px', marginBottom:'12px', flexWrap:'wrap'}}>
-          <label style={{display:'inline-flex', alignItems:'center', gap:'7px', fontSize:'12.5px', color:'var(--text-dim)', cursor:'pointer'}}>
-            <input type="checkbox" checked={hideIsolated} onChange={e => setHideIsolated(e.target.checked)} style={{cursor:'pointer'}} />
+        <div className="flex items-center justify-between gap-3.5 mb-3 flex-wrap" style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'14px', marginBottom:'12px', flexWrap:'wrap'}}>
+          <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs" style={{display:'inline-flex', alignItems:'center', gap:'7px', fontSize:'12.5px', color:'var(--text-dim)', cursor:'pointer'}}>
+            <input type="checkbox" checked={hideIsolated} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHideIsolated(e.target.checked)} style={{cursor:'pointer'}} />
             Hide Isolated 1-Hop Pairs (Focus Connected Core)
           </label>
-          <div style={{fontSize:'12px', color:'var(--text-faint)'}}>
+          <div className="text-xs" style={{fontSize:'12px', color:'var(--text-faint)'}}>
             Drag nodes to inspect · Click any node or ask the AI Copilot on the right for inferences
           </div>
         </div>
 
         <div id="graph">
           {loading && (
-            <div style={{position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px', color:'var(--text-dim)', background:'var(--graph-bg)', zIndex:10}}>
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3.5 z-10" style={{position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px', color:'var(--text-dim)', background:'var(--graph-bg)', zIndex:10}}>
               <div className="status-dot" style={{width:'14px', height:'14px', background:'var(--accent)', animation:'pulse 1s infinite'}}></div>
               <div style={{fontSize:'13px'}}>Generating graph layout…</div>
             </div>
@@ -307,27 +316,27 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
 
           {/* AI Copilot Side Structure */}
           <div className={`graph-ai-box ${aiPanelCollapsed ? 'collapsed' : ''}`}>
-            <div className="graph-ai-header">
-              <div style={{display:'flex', alignItems:'center', gap:'7px'}}>
+            <div className="graph-ai-header flex items-center justify-between">
+              <div className="flex items-center gap-1.5" style={{display:'flex', alignItems:'center', gap:'7px'}}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
-                <span style={{fontWeight:700, fontSize:'13px', color:'var(--text)'}}>AI Copilot</span>
+                <span className="font-bold text-xs" style={{fontWeight:700, fontSize:'13px', color:'var(--text)'}}>AI Copilot</span>
                 <span className="tag open" style={{padding:'1px 6px', fontSize:'9.5px', textTransform:'uppercase'}}>AI Inference</span>
               </div>
-              <button className="neu-btn ghost" style={{padding:'2px 7px', fontSize:'11px'}} onClick={() => setAiPanelCollapsed(true)}>✕</button>
+              <button className="neu-btn ghost transition" style={{padding:'2px 7px', fontSize:'11px'}} onClick={() => setAiPanelCollapsed(true)}>✕</button>
             </div>
 
             <div className="graph-ai-body">
               {aiChatLog.map((msg, idx) => (
                 <div key={idx} className={`ai-msg ${msg.sender === 'user' ? 'user' : 'bot'}`} style={msg.error ? {borderColor:'rgba(239, 68, 68, 0.4)'} : {}}>
-                  <div className="ai-msg-hdr">
+                  <div className="ai-msg-hdr flex items-center gap-1.5">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
                     <span>{msg.sender === 'user' ? 'Investigator Query' : (msg.model || 'AI Copilot')}</span>
                   </div>
                   <div>{msg.content}</div>
                   {msg.chips && (
-                    <div className="ai-quick-chips">
+                    <div className="ai-quick-chips flex flex-wrap gap-1.5 mt-2">
                       {msg.chips.map((c, cIdx) => (
-                        <button key={cIdx} type="button" className="ai-chip" onClick={() => handleAiQuerySubmit(null, c.replace(/^[^a-zA-Z0-9]+/, ''))}>
+                        <button key={cIdx} type="button" className="ai-chip transition" onClick={() => handleAiQuerySubmit(null, c.replace(/^[^a-zA-Z0-9]+/, ''))}>
                           {c}
                         </button>
                       ))}
@@ -337,7 +346,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
               ))}
               {aiQuerying && (
                 <div className="ai-msg bot">
-                  <div className="ai-msg-hdr">
+                  <div className="ai-msg-hdr flex items-center gap-1.5">
                     <div className="status-dot" style={{width:'8px', height:'8px', background:'var(--accent)', animation:'pulse 1s infinite'}}></div>
                     <span>AI is analyzing topology…</span>
                   </div>
@@ -347,17 +356,17 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
             </div>
 
             <div className="graph-ai-footer">
-              <form onSubmit={handleAiQuerySubmit} style={{display:'flex', gap:'6px', width:'100%', margin:0}}>
-                <input type="text" className="control" style={{fontSize:'12px', padding:'7px 10px', flex:1}} placeholder="Ask about this network…" value={aiInput} onChange={e => setAiInput(e.target.value)} />
-                <button type="submit" className="neu-btn primary" disabled={aiQuerying} style={{padding:'0 12px', fontSize:'12px'}}>{aiQuerying ? '…' : 'Ask'}</button>
+              <form onSubmit={handleAiQuerySubmit} className="flex gap-1.5 w-full m-0" style={{display:'flex', gap:'6px', width:'100%', margin:0}}>
+                <input type="text" className="control" style={{fontSize:'12px', padding:'7px 10px', flex:1}} placeholder="Ask about this network…" value={aiInput} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAiInput(e.target.value)} />
+                <button type="submit" className="neu-btn primary transition" disabled={aiQuerying} style={{padding:'0 12px', fontSize:'12px'}}>{aiQuerying ? '…' : 'Ask'}</button>
               </form>
             </div>
           </div>
         </div>
 
-        <div className="legend">
+        <div className="legend flex flex-wrap gap-3">
           {Object.entries(nodeCounts).map(([k, v]) => (
-            <div key={k} className="lg">
+            <div key={k} className="lg flex items-center gap-1.5">
               <span className="dot" style={{background: LABEL_COLOR[k] || '#94a3b8'}}></span>
               <b>{k}</b> <span className="mono">({v})</span>
             </div>
@@ -370,13 +379,13 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
 
       {selectedNode && (
         <div className="card">
-          <div className="card-header">
-            <div className="card-title">Entity Inspection</div>
-            <button className="neu-btn ghost" onClick={() => setSelectedNode(null)}>Close</button>
+          <div className="card-header flex items-center justify-between gap-3 flex-wrap">
+            <div className="card-title font-semibold">Entity Inspection</div>
+            <button className="neu-btn ghost transition" onClick={() => setSelectedNode(null)}>Close</button>
           </div>
           <div>
-            <div style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px'}}>
-              <span className="dot" style={{width:'14px', height:'14px', background: LABEL_COLOR[selectedNode.labels?.[0]] || '#94a3b8', borderRadius:'50%'}}></span>
+            <div className="flex items-center gap-3 mb-4" style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px'}}>
+              <span className="dot" style={{width:'14px', height:'14px', background: (selectedNode.labels?.[0] && LABEL_COLOR[selectedNode.labels[0]]) || '#94a3b8', borderRadius:'50%'}}></span>
               <div>
                 <div style={{fontWeight:700, fontSize:'16px'}}>{esc(selectedNode.name)}</div>
                 <div className="mono" style={{color:'var(--text-faint)', fontSize:'12px'}}>{esc(selectedNode.id)}</div>
@@ -394,8 +403,8 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
                   </div>
                 ))}
             </div>
-            <div style={{marginTop:'18px', display:'flex', gap:'10px', justifyContent:'flex-end'}}>
-              <button className="neu-btn primary" onClick={() => openEntityModal(selectedNode.id)}>View Full Entity Profile</button>
+            <div className="flex gap-2.5 justify-end mt-4" style={{marginTop:'18px', display:'flex', gap:'10px', justifyContent:'flex-end'}}>
+              <button className="neu-btn primary transition" onClick={() => openEntityModal(selectedNode.id)}>View Full Entity Profile</button>
             </div>
           </div>
         </div>

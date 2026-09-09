@@ -1,34 +1,50 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API, NAV } from './services/api.js';
-import { Sidebar, Topbar } from './components/Sidebar.jsx';
-import { OverviewModule } from './components/OverviewModule.jsx';
-import { GraphExplorerModule } from './components/GraphExplorerModule.jsx';
-import { EntitySearchModule } from './components/EntitySearchModule.jsx';
-import { ShortestPathModule } from './components/ShortestPathModule.jsx';
-import { RankingsModule } from './components/RankingsModule.jsx';
-import { PatternInsightsModule } from './components/PatternInsightsModule.jsx';
-import { BlockchainModule } from './components/BlockchainModule.jsx';
-import { CaseRegistryModule } from './components/CaseRegistryModule.jsx';
-import { DataIngestionModule } from './components/DataIngestionModule.jsx';
-import { EntityModalContent, AiDossierModalContent, ResetDbConfirmContent, DeleteCaseConfirmContent } from './components/Modals.jsx';
+import {
+  API,
+  NAV,
+  Case,
+  Entity,
+  Insight,
+  HealthStatus,
+  ViewId,
+  ThemeMode,
+  Toast,
+  ModalState
+} from './services/api';
+import { Sidebar, Topbar } from './components/Sidebar';
+import { OverviewModule } from './components/OverviewModule';
+import { GraphExplorerModule } from './components/GraphExplorerModule';
+import { EntitySearchModule } from './components/EntitySearchModule';
+import { ShortestPathModule } from './components/ShortestPathModule';
+import { RankingsModule } from './components/RankingsModule';
+import { PatternInsightsModule } from './components/PatternInsightsModule';
+import { BlockchainModule } from './components/BlockchainModule';
+import { CaseRegistryModule } from './components/CaseRegistryModule';
+import { DataIngestionModule } from './components/DataIngestionModule';
+import {
+  EntityModalContent,
+  AiDossierModalContent,
+  ResetDbConfirmContent,
+  DeleteCaseConfirmContent
+} from './components/Modals';
 
 export default function App() {
-  const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('atlas_theme');
-    if (saved) return saved;
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem('atlas_theme') as ThemeMode | null;
+    if (saved === 'dark' || saved === 'light') return saved;
     return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   });
-  const [view, setView] = useState(() => {
+  const [view, setView] = useState<string>(() => {
     const h = location.hash.replace('#', '');
     return NAV.find(n => n.id === h) ? h : 'overview';
   });
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [health, setHealth] = useState(null);
-  const [cases, setCases] = useState([]);
-  const [selectedCase, setSelectedCase] = useState(null);
-  const [insights, setInsights] = useState([]);
-  const [toasts, setToasts] = useState([]);
-  const [modal, setModal] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [cases, setCases] = useState<Case[]>([]);
+  const [selectedCase, setSelectedCase] = useState<string | null>(null);
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [modal, setModal] = useState<ModalState | null>(null);
 
   // Apply theme to html root
   useEffect(() => {
@@ -48,7 +64,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const changeView = useCallback((newView) => {
+  const changeView = useCallback((newView: string): void => {
     setView(prev => {
       if (prev === newView) return prev;
       return newView;
@@ -60,7 +76,7 @@ export default function App() {
     window.scrollTo(0, 0);
   }, []);
 
-  const addToast = useCallback((msg, type = 'info') => {
+  const addToast = useCallback((msg: string, type: string = 'info'): void => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, msg, type, out: false }]);
     setTimeout(() => {
@@ -72,23 +88,24 @@ export default function App() {
   }, []);
 
   // Health check
-  const fetchHealth = useCallback(async () => {
+  const fetchHealth = useCallback(async (): Promise<void> => {
     try {
-      const h = await API.get('/api/health');
+      const h = await API.get<HealthStatus>('/api/health');
       setHealth(h);
-    } catch (e) {
+    } catch {
       setHealth(null);
     }
   }, []);
 
   // Load cases
-  const fetchCases = useCallback(async () => {
+  const fetchCases = useCallback(async (): Promise<Case[]> => {
     try {
-      const list = await API.get('/api/cases?limit=200');
+      const list = await API.get<Case[]>('/api/cases?limit=200');
       setCases(list);
       return list;
-    } catch (e) {
-      addToast(`Failed to load cases: ${e.message}`, 'err');
+    } catch (e: unknown) {
+      const err = e as Error;
+      addToast(`Failed to load cases: ${err.message}`, 'err');
       return [];
     }
   }, [addToast]);
@@ -100,30 +117,31 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchHealth, fetchCases]);
 
-  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  const toggleTheme = (): void => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
   // Open Entity Modal
-  const openEntityModal = useCallback(async (entityId) => {
+  const openEntityModal = useCallback(async (entityId: string): Promise<void> => {
     try {
-      const e = await API.get(`/api/entities/${encodeURIComponent(entityId)}`);
+      const e = await API.get<Record<string, unknown>>(`/api/entities/${encodeURIComponent(entityId)}`);
       setModal({ type: 'entity', data: e });
-    } catch (err) {
-      addToast(`Could not load entity: ${err.message}`, 'err');
+    } catch (err: unknown) {
+      const error = err as Error;
+      addToast(`Could not load entity: ${error.message}`, 'err');
     }
   }, [addToast]);
 
   // Open AI Insights Modal
-  const openAiDossierModal = useCallback((caseId, caseName) => {
+  const openAiDossierModal = useCallback((caseId: string, caseName: string): void => {
     setModal({ type: 'ai_dossier', data: { caseId, caseName } });
   }, []);
 
   // Open Reset DB Confirmation
-  const promptResetDatabase = useCallback(() => {
+  const promptResetDatabase = useCallback((): void => {
     setModal({ type: 'reset_db' });
   }, []);
 
   // Open Delete Case Confirmation
-  const promptDeleteCase = useCallback((caseId, caseName) => {
+  const promptDeleteCase = useCallback((caseId: string, caseName: string): void => {
     setModal({ type: 'delete_case', data: { caseId, caseName } });
   }, []);
 
@@ -132,7 +150,7 @@ export default function App() {
       {/* Sidebar Mobile Overlay */}
       <div className={`overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)}></div>
 
-      <div className="app">
+      <div className="app relative z-[1]">
         {/* Sidebar */}
         <Sidebar
           view={view}
@@ -145,7 +163,7 @@ export default function App() {
         />
 
         {/* Main Content Area */}
-        <main className="main">
+        <main className="main mx-auto">
           <Topbar
             view={view}
             health={health}
@@ -170,7 +188,7 @@ export default function App() {
       </div>
 
       {/* Toast Notifications */}
-      <div id="toasts">
+      <div id="toasts" className="fixed top-5 right-5 z-[9999] flex flex-col gap-2.5 pointer-events-none">
         {toasts.map(t => (
           <div key={t.id} className={`toast ${t.type} ${t.out ? 'out' : ''}`}>{t.msg}</div>
         ))}
@@ -178,10 +196,16 @@ export default function App() {
 
       {/* Global Modal Overlay */}
       {modal && (
-        <div className="modal-overlay open" onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}>
+        <div className="modal-overlay open" onClick={(e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) setModal(null); }}>
           <div className="modal">
-            {modal.type === 'entity' && <EntityModalContent data={modal.data} onClose={() => setModal(null)} openEntityModal={openEntityModal} />}
-            {modal.type === 'ai_dossier' && <AiDossierModalContent caseId={modal.data.caseId} caseName={modal.data.caseName} onClose={() => setModal(null)} />}
+            {modal.type === 'entity' && <EntityModalContent data={modal.data as unknown as Entity} onClose={() => setModal(null)} openEntityModal={openEntityModal} />}
+            {modal.type === 'ai_dossier' && (
+              <AiDossierModalContent
+                caseId={String(modal.data?.caseId ?? '')}
+                caseName={String(modal.data?.caseName ?? '')}
+                onClose={() => setModal(null)}
+              />
+            )}
             {modal.type === 'reset_db' && (
               <ResetDbConfirmContent
                 onClose={() => setModal(null)}
@@ -195,13 +219,13 @@ export default function App() {
             )}
             {modal.type === 'delete_case' && (
               <DeleteCaseConfirmContent
-                caseId={modal.data.caseId}
-                caseName={modal.data.caseName}
+                caseId={String(modal.data?.caseId ?? '')}
+                caseName={String(modal.data?.caseName ?? '')}
                 onClose={() => setModal(null)}
                 addToast={addToast}
                 onSuccess={() => {
                   fetchCases();
-                  if (selectedCase === modal.data.caseId) setSelectedCase(null);
+                  if (selectedCase === modal.data?.caseId) setSelectedCase(null);
                 }}
               />
             )}
