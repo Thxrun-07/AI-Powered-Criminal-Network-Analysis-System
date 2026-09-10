@@ -10,7 +10,7 @@ export interface DataIngestionModuleProps {
 export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIngestionModuleProps) {
   const [activeTab, setActiveTab] = useState<'json' | 'file' | 'narrative'>('json');
   const [jsonText, setJsonText] = useState<string>('');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [narrativeText, setNarrativeText] = useState<string>('');
   const [ingesting, setIngesting] = useState<boolean>(false);
 
@@ -51,12 +51,15 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
 
   const handleFileUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!file) { addToast('Please select a file to upload', 'info'); return; }
+    if (!files || files.length === 0) { addToast('Please select a file to upload', 'info'); return; }
     setIngesting(true);
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      const res = await API.send<{ case_id?: string }>('/api/v1/ingest/file', { method: 'POST', body: formData, form: true });
+      for (const f of files) {
+        formData.append('files', f);
+        formData.append('file', f);
+      }
+      const res = await API.send<{ case_id?: string }>('/api/v1/ingest', { method: 'POST', body: formData, form: true });
       addToast(`File ingestion complete! Case ID: ${res.case_id}`, 'ok');
       await fetchCases();
       changeView('cases');
@@ -71,10 +74,11 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
     if (!narrativeText.trim()) { addToast('Please enter intelligence narrative text', 'info'); return; }
     setIngesting(true);
     try {
-      const formData = new FormData();
-      const blob = new Blob([narrativeText], { type: 'text/plain' });
-      formData.append('file', blob, 'narrative_intel.txt');
-      const res = await API.send<{ case_id?: string }>('/api/v1/ingest/file', { method: 'POST', body: formData, form: true });
+      const res = await API.send<{ case_id?: string }>('/api/v1/ingest/text', {
+        method: 'POST',
+        body: narrativeText,
+        headers: { 'Content-Type': 'text/plain' }
+      });
       addToast(`Narrative intelligence ingested for Case '${res.case_id}'!`, 'ok');
       await fetchCases();
       changeView('cases');
@@ -115,11 +119,16 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
             <div className="flex flex-col gap-4 items-center justify-center" style={{padding:'36px 20px', border:'2px dashed var(--border)', borderRadius:'var(--radius-sm)', textAlign:'center', marginBottom:'20px', background:'var(--bg1)'}}>
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5" style={{marginBottom:'10px'}}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
               <div className="font-bold text-sm" style={{fontWeight:700, fontSize:'15px', marginBottom:'4px'}}>Select or drag & drop files</div>
-              <div className="text-xs" style={{fontSize:'12.5px', color:'var(--text-faint)', marginBottom:'16px'}}>Supports structured `.json` case dossiers, CDR `.csv` phone records, bank `.csv` statements</div>
-              <input type="file" onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFile(e.target.files ? e.target.files[0] : null)} style={{display:'inline-block'}} />
+              <div className="text-xs mb-4 text-slate-400" style={{fontSize:'12.5px', color:'var(--text-faint)', marginBottom:'16px'}}>Supports structured `.json` case dossiers, CDR `.csv` phone records, bank `.csv` statements</div>
+              <input type="file" multiple onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiles(Array.from(e.target.files || []))} style={{display:'inline-block'}} />
+              {files.length > 0 && (
+                <div className="mt-3 text-sm font-semibold text-atlas-cyan" style={{marginTop:'12px', fontSize:'13px', color:'var(--accent)', fontWeight:600}}>
+                  Selected {files.length} file{files.length > 1 ? 's' : ''}: {files.map(f => f.name).join(', ')}
+                </div>
+              )}
             </div>
             <div className="flex justify-end" style={{display:'flex', justifyContent:'flex-end'}}>
-              <button type="submit" className="neu-btn primary transition-colors" disabled={ingesting}>{ingesting ? 'Uploading & Extracting…' : 'Process & Upload File'}</button>
+              <button type="submit" className="neu-btn primary transition-colors" disabled={ingesting || files.length === 0}>{ingesting ? 'Uploading & Extracting…' : 'Process & Upload File'}</button>
             </div>
           </form>
         )}

@@ -159,7 +159,7 @@ export function ResetDbConfirmContent({ onClose, addToast, onSuccess }: ResetDbC
   const handleReset = async () => {
     setResetting(true);
     try {
-      await API.delete('/api/cases/reset-database', { confirm_reset: true });
+      await API.delete('/api/cases/reset?confirm=true', { confirm: true, confirm_reset: true });
       addToast('Database reset successfully!', 'ok');
       onSuccess();
       onClose();
@@ -201,7 +201,7 @@ export function DeleteCaseConfirmContent({ caseId, caseName, onClose, addToast, 
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      await API.delete(`/api/cases/${encodeURIComponent(caseId)}`);
+      await API.delete(`/api/cases/${encodeURIComponent(caseId)}?confirm=true`, { confirm: true });
       addToast(`Case '${caseId}' deleted successfully!`, 'ok');
       onSuccess();
       onClose();

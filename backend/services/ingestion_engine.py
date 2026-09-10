@@ -115,15 +115,22 @@ CASE OPERATIONAL DATA:
                 pass
 
         # 2. CSV file check
-        lines = content_trim.splitlines()
-        if len(lines) > 0 and "," in lines[0] and ("sender_account" in lines[0].lower() or "caller_msisdn" in lines[0].lower()):
+        lines = [line for line in content_trim.splitlines() if line.strip()]
+        if len(lines) > 0 and ("," in lines[0] or filename_lower.endswith(".csv")):
             header = lines[0].lower()
-            if "sender_account" in header:
+            if any(k in header for k in ["sender_account", "receiver_account", "amount", "transaction_id", "source_account"]):
                 self.parse_bank_csv(lines)
                 return
-            elif "caller_msisdn" in header:
+            elif any(k in header for k in ["caller_msisdn", "recipient_msisdn", "duration_sec", "celltower_id", "caller"]):
                 self.parse_cdr_csv(lines)
                 return
+            elif filename_lower.endswith(".csv"):
+                if any(k in header for k in ["account", "amount", "bank", "txn"]):
+                    self.parse_bank_csv(lines)
+                    return
+                elif any(k in header for k in ["phone", "call", "msisdn", "tower"]):
+                    self.parse_cdr_csv(lines)
+                    return
 
         # 3. Unstructured text parser (FIRs, intel briefs, surveillance notes, criminal histories)
         self.parse_unstructured_text(content, filename_lower)
@@ -247,16 +254,25 @@ CASE OPERATIONAL DATA:
 
     def parse_bank_csv(self, lines: List[str]) -> None:
         reader = csv.DictReader(lines)
+        row_idx = 0
         for row in reader:
-            sender_acc = row.get("Sender_Account", "").strip()
-            sender_name = row.get("Sender_Name", "").strip()
-            receiver_acc = row.get("Receiver_Account", "").strip()
-            receiver_name = row.get("Receiver_Name", "").strip()
-            amount_str = row.get("Amount_INR", "0").strip()
-            timestamp = row.get("Timestamp", "").strip()
-            txn_id = row.get("Transaction_ID", "").strip()
+            row_idx += 1
+            def get_val(*keys):
+                for k in keys:
+                    for row_k, v in row.items():
+                        if row_k and row_k.strip().lower() == k.lower():
+                            return (v or "").strip()
+                return ""
 
-            if not txn_id or not sender_acc or not receiver_acc:
+            sender_acc = get_val("Sender_Account", "source_account", "sender_account_no", "sender_acc", "from_account", "sender")
+            sender_name = get_val("Sender_Name", "source_name", "from_name", "sender_owner")
+            receiver_acc = get_val("Receiver_Account", "target_account", "receiver_account_no", "receiver_acc", "to_account", "receiver")
+            receiver_name = get_val("Receiver_Name", "target_name", "to_name", "receiver_owner")
+            amount_str = get_val("Amount_INR", "amount", "amt", "value") or "0"
+            timestamp = get_val("Timestamp", "time", "date", "datetime", "txn_date") or "2026-01-01 00:00:00"
+            txn_id = get_val("Transaction_ID", "txn_id", "id", "ref_no", "reference_id") or f"TXN_{row_idx}"
+
+            if not sender_acc or not receiver_acc:
                 continue
 
             try:
@@ -297,11 +313,18 @@ CASE OPERATIONAL DATA:
     def parse_cdr_csv(self, lines: List[str]) -> None:
         reader = csv.DictReader(lines)
         for row in reader:
-            caller = row.get("Caller_MSISDN", "").strip()
-            recipient = row.get("Recipient_MSISDN", "").strip()
-            timestamp = row.get("Timestamp", "").strip()
-            duration_str = row.get("Duration_Sec", "0").strip()
-            cell_tower = row.get("CellTower_ID", "").strip()
+            def get_val(*keys):
+                for k in keys:
+                    for row_k, v in row.items():
+                        if row_k and row_k.strip().lower() == k.lower():
+                            return (v or "").strip()
+                return ""
+
+            caller = get_val("Caller_MSISDN", "source_phone", "caller", "calling_number", "caller_number", "from_msisdn")
+            recipient = get_val("Recipient_MSISDN", "target_phone", "recipient", "callee", "called_number", "to_msisdn")
+            timestamp = get_val("Timestamp", "time", "date", "datetime", "call_date") or "2026-01-01 00:00:00"
+            duration_str = get_val("Duration_Sec", "duration", "duration_seconds", "call_duration") or "0"
+            cell_tower = get_val("CellTower_ID", "cell_tower", "tower_id", "tower") or None
 
             if not caller or not recipient:
                 continue

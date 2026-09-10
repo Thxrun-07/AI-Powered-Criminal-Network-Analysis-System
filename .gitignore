@@ -17,3 +17,6 @@ node_modules/
 
 # Allow compiled React frontend dist for Render deployment
 !frontend/dist/
+
+# Nested reference folder
+SIH-189-completed/

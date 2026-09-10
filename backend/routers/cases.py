@@ -140,10 +140,14 @@ def get_case(case_id: str):
 
 
 @router.delete("/reset", summary="Dev Utility: Reset All Graph Data")
+@router.delete("/reset-database", summary="Dev Utility: Reset All Graph Data (alias)")
 def reset_cases(
-    confirm: bool = Query(False, description="Explicit confirmation required to clear all data")
+    confirm: bool = Query(False, description="Explicit confirmation required to clear all data"),
+    confirm_reset: bool = Query(False, description="Alias confirmation required to clear all data"),
+    payload: Optional[Dict[str, Any]] = Body(None, description="Optional request body with confirmation")
 ):
-    if not confirm:
+    is_confirmed = confirm or confirm_reset or bool(payload and (payload.get("confirm") or payload.get("confirm_reset")))
+    if not is_confirmed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Reset operation aborted. Set 'confirm=true' to wipe all graph database nodes and relationships."
