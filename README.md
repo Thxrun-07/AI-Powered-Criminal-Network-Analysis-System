@@ -16,8 +16,15 @@
   <img src="https://img.shields.io/badge/PROTOTYPE_STATUS-EVALUATION_READY_🟢-00F5D4?style=for-the-badge&logo=radar&logoColor=black" alt="Status" />
   <img src="https://img.shields.io/badge/TEST_HARNESS-211%20PASSED%20(100%25)-00E676?style=for-the-badge&logo=pytest&logoColor=white" alt="Tests" />
   <img src="https://img.shields.io/badge/AI_COPILOT-GEMINI_2.5_FLASH_+_HEURISTICS-7928CA?style=for-the-badge&logo=google&logoColor=white" alt="Gemini AI" />
-  <img src="https://img.shields.io/badge/GRAPH_CORE-NEO4J_5.20_LTS-008CC1?style=for-the-badge&logo=neo4j&logoColor=white" alt="Neo4j" />
+  <img src="https://img.shields.io/badge/GRAPH_CORE-NEO4J_5.27_AURA-008CC1?style=for-the-badge&logo=neo4j&logoColor=white" alt="Neo4j" />
   <img src="https://img.shields.io/badge/CHAIN_OF_CUSTODY-SHA--256_HASH_CHAIN-FF9900?style=for-the-badge&logo=blockchaindotcom&logoColor=white" alt="Evidence Ledger" />
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/REACT-19.x-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19" />
+  <img src="https://img.shields.io/badge/TYPESCRIPT-5.6_STRICT-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/TAILWIND_CSS-3.4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/VITE-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/FASTAPI-0.100+-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
 </p>
 
 ---
@@ -35,13 +42,13 @@
 
 | 🎨 [Frontend](frontend/README.md) | ⚙️ [Backend](backend/README.md) | 📂 [Dataset](dataset/README.md) | 🧪 [Tests](tests/README.md) | 🔒 [Blockchain](data/README.md) | 📑 [Documentation](docs/README.md) |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| Single Page App & Vis.js | FastAPI & Cypher Engine | Multi-Modal Forensic Files | 211 Passing Tests | SHA-256 Merkle Ledger | Technical Specifications |
+| React 19 + TypeScript + Tailwind CSS | FastAPI & Cypher Engine | Multi-Modal Forensic Files | 211 Passing Tests | SHA-256 Merkle Ledger | Technical Specifications |
 
 ---
 
 ## 🖥️ Live Prototype Dashboard Interface
 
-The interactive single-page analyst workspace (`frontend/index.html`) rendered with real multi-case evidence:
+The interactive single-page analyst workspace built with **React 19**, **TypeScript (strict mode)**, and **Tailwind CSS**, bundled via **Vite 5**:
 
 <div align="center">
   <img src="docs/assets/command_center_dashboard.png" width="100%" alt="Atlas Command Center Dashboard" />
@@ -259,10 +266,30 @@ To maintain rigorous engineering integrity, here is the exact breakdown of imple
 | **Heuristic Fallback Engine** | 🟢 **Implemented** | Rule-based topology summarizer ensuring 100% offline uptime without API credits. |
 | **Hash-Chained Custody Ledger** | 🟢 **Implemented** | SHA-256 Merkle root block generator with tamper-verification API. |
 | **Automated Test Suite** | 🟢 **Implemented** | 211 passing unit & integration tests running completely offline in ~1.2 seconds. |
+| **React 19 + TypeScript Frontend** | 🟢 **Implemented** | Fully typed `.tsx` codebase with `strict: true`, typed props/state/refs, and zero `any` leaks. Built with Vite 5. |
+| **Tailwind CSS Integration** | 🟢 **Implemented** | Utility-first CSS framework with custom Atlas design tokens, glassmorphism, and neomorphic components. |
 | **Interactive Web Dashboard** | 🟢 **Implemented** | Vis.js ForceAtlas2 network explorer with docked Copilot chat drawer. |
 | **Deterministic Entity Matching**| 🟡 **Prototype Scope** | Strict primary key matching (Phone, IMEI, Account, PAN) to eliminate false merges. |
 | **Distributed Consensus** | 🔵 **Future Roadmap** | Multi-node Raft/PBFT consensus across separate agency jurisdictions. |
 | **Probabilistic Fuzzy NER** | 🔵 **Future Roadmap** | Legal NER fine-tuning for resolving fuzzy suspect name variants. |
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology | Version | Purpose |
+| :--- | :--- | :---: | :--- |
+| **Frontend Framework** | React | 19.x | Component-based SPA with hooks and strict mode |
+| **Type System** | TypeScript | 5.6 | `strict: true`, typed props/state/refs/events across all `.tsx` files |
+| **CSS Framework** | Tailwind CSS | 3.4 | Utility-first styling with custom Atlas design tokens |
+| **Bundler** | Vite | 5.x | Lightning-fast HMR and optimized production builds (`tsc && vite build`) |
+| **Graph Visualization** | Vis.js Network | 9.1 | ForceAtlas2-based interactive network canvas |
+| **Charts** | Chart.js | 4.4 | Bar and doughnut charts for ecosystem metrics |
+| **Backend** | FastAPI | 0.100+ | Async Python REST API with Pydantic v2 validation |
+| **Graph Database** | Neo4j Aura | 5.27 | Cloud-hosted property graph with Cypher query engine |
+| **AI Copilot** | Google Gemini | 2.5 Flash | Natural language graph intelligence with heuristic fallback |
+| **Evidence Integrity** | SHA-256 | — | Hash-chained Merkle root ledger for chain of custody |
+| **Testing** | Pytest | 9.1 | 211 unit & integration tests, 100% offline execution |
 
 ---
 
@@ -294,7 +321,7 @@ flowchart TD
         I[Fail-Soft Graph Heuristic Engine]:::ai
     end
 
-    subgraph UI ["🎨 Analyst Workspace (Single-Page App)"]
+    subgraph UI ["🎨 Analyst Workspace (React 19 + TypeScript + Tailwind CSS)"]
         J[Vis.js ForceAtlas2 Interactive Canvas]:::visual
         K[Docked Copilot Chat & Quick Chips]:::visual
         L[Suspicious Pattern Alerts & Threat Badges]:::visual
@@ -373,8 +400,34 @@ AI-Powered-Criminal-Network-Analysis-System/
 ├── pytest.ini                          # Pytest configuration
 ├── requirements.txt                    # Pinned production dependencies
 │
-├── frontend/                           # 🎨 Modern Single-Page Analyst Application
-│   ├── index.html                      # Interactive Vis.js network canvas & Copilot UI
+├── frontend/                           # 🎨 React 19 + TypeScript + Tailwind CSS Application
+│   ├── index.html                      # SPA entry point (loads /src/main.tsx)
+│   ├── package.json                    # Dependencies & build scripts (tsc && vite build)
+│   ├── tsconfig.json                   # TypeScript strict configuration
+│   ├── tsconfig.node.json              # TypeScript config for Vite
+│   ├── tailwind.config.ts              # Tailwind CSS theme & design tokens
+│   ├── postcss.config.js               # PostCSS pipeline (Tailwind + Autoprefixer)
+│   ├── vite.config.ts                  # Vite 5 bundler configuration
+│   ├── src/
+│   │   ├── main.tsx                    # React 19 entry point
+│   │   ├── App.tsx                     # Root component with typed state & routing
+│   │   ├── index.css                   # Tailwind directives + custom glassmorphism styles
+│   │   ├── vite-env.d.ts               # TypeScript module declarations
+│   │   ├── services/
+│   │   │   └── api.ts                  # Typed API client & domain interfaces
+│   │   └── components/
+│   │       ├── Sidebar.tsx             # Navigation sidebar & topbar
+│   │       ├── OverviewModule.tsx      # Command Center with Chart.js analytics
+│   │       ├── GraphExplorerModule.tsx # Vis.js ForceAtlas2 interactive graph
+│   │       ├── EntitySearchModule.tsx  # Multi-property entity search
+│   │       ├── ShortestPathModule.tsx  # Path analysis between entities
+│   │       ├── RankingsModule.tsx      # Centrality rankings (PageRank, Betweenness)
+│   │       ├── PatternInsightsModule.tsx # 10 forensic pattern detectors
+│   │       ├── BlockchainModule.tsx    # SHA-256 chain of custody ledger
+│   │       ├── CaseRegistryModule.tsx  # Case management & entity breakdown
+│   │       ├── DataIngestionModule.tsx # JSON/CSV/narrative ingestion
+│   │       └── Modals.tsx             # Entity detail & AI dossier modals
+│   ├── dist/                           # Production build output (committed for deployment)
 │   └── README.md                       # 👉 Detailed Frontend Guide
 │
 ├── backend/                            # ⚙️ FastAPI Graph Intelligence Engine
