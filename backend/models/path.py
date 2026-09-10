@@ -8,6 +8,7 @@ class AmbiguityCandidate(BaseModel):
     aliases: List[str] = Field(default_factory=list, description="Known aliases")
     dob: Optional[str] = Field(default=None, description="Date of birth")
     case_ids: List[str] = Field(default_factory=list, description="Associated case IDs")
+    element_id: Optional[str] = Field(default=None, description="Neo4j element ID")
 
 
 class ShortestPathResponse(BaseModel):

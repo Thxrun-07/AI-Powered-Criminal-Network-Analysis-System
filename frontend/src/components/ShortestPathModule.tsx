@@ -51,21 +51,21 @@ export function ShortestPathModule({ openEntityModal, addToast }: ShortestPathMo
         </div>
         <div className="row flex gap-3.5 items-end flex-wrap" style={{ alignItems: 'flex-end' }}>
           <div className="field flex-1">
-            <label>Suspect (Name or ID)</label>
+            <label>Suspect / Source (Name, Phone, or ID)</label>
             <input
               className="control"
               value={suspect}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSuspect(e.target.value)}
-              placeholder="e.g. Devendra Sharma or P-001"
+              placeholder="e.g. Sameer Khan, Devendra Sharma, P-001"
             />
           </div>
           <div className="field flex-1">
-            <label>Victim (Name or ID)</label>
+            <label>Victim / Target (Name, Phone, or ID)</label>
             <input
               className="control"
               value={victim}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVictim(e.target.value)}
-              placeholder="e.g. Rajiv Kumar or P-002"
+              placeholder="e.g. 9876543010, Rajiv Sen, P-003"
             />
           </div>
           <div className="field max-w-[130px]" style={{ maxWidth: '130px' }}>
