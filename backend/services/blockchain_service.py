@@ -282,8 +282,8 @@ class BlockchainService:
         return created_blocks
 
     @classmethod
-    def verify_ledger_integrity(cls) -> Dict[str, Any]:
-        cls.load_ledger()
+    def verify_ledger_integrity(cls, session: Optional[Session] = None) -> Dict[str, Any]:
+        cls.load_ledger(session=session)
         cls._ensure_initialized()
 
         is_valid = True
@@ -304,14 +304,14 @@ class BlockchainService:
         return {
             "valid": is_valid,
             "total_blocks": len(cls._chain),
-            "genesis_hash": cls._chain[0].hash,
+            "genesis_hash": cls._chain[0].hash if cls._chain else "",
             "latest_block_hash": cls._chain[-1].hash if cls._chain else "",
             "violations": violations
         }
 
     @classmethod
     def verify_case_integrity(cls, session: Session, case_id: str) -> Dict[str, Any]:
-        cls.load_ledger()
+        cls.load_ledger(session=session)
         cls._ensure_initialized()
 
         case_blocks = [b for b in cls._chain if b.case_id == case_id]
@@ -337,7 +337,7 @@ class BlockchainService:
         latest_case_block = case_blocks[-1]
 
         # Audit ledger integrity
-        ledger_health = cls.verify_ledger_integrity()
+        ledger_health = cls.verify_ledger_integrity(session=session)
 
         # Document-level domain tampering analysis
         tampered_doc_types = set()
@@ -426,8 +426,8 @@ class BlockchainService:
         }
 
     @classmethod
-    def get_ledger(cls, case_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-        cls.load_ledger()
+    def get_ledger(cls, case_id: Optional[str] = None, limit: int = 100, session: Optional[Session] = None) -> List[Dict[str, Any]]:
+        cls.load_ledger(session=session)
         cls._ensure_initialized()
 
         blocks = cls._chain
@@ -437,7 +437,58 @@ class BlockchainService:
         return [b.to_dict() for b in reversed(blocks[-limit:])]
 
     @classmethod
-    def save_ledger(cls):
+    def purge_case_blocks(cls, case_id: str, session: Optional[Session] = None) -> int:
+        """
+        Purges all blockchain evidence blocks for a deleted case from Neo4j and memory/file storage,
+        re-indexing and re-hashing remaining blocks to preserve ledger integrity.
+        """
+        cls.load_ledger(session=session)
+        cls._ensure_initialized()
+
+        initial_count = len(cls._chain)
+        cls._chain = [b for b in cls._chain if b.case_id != case_id]
+        purged_count = initial_count - len(cls._chain)
+
+        if purged_count == 0:
+            return 0
+
+        # Re-index remaining blocks to maintain unbroken chain
+        for i in range(1, len(cls._chain)):
+            b = cls._chain[i]
+            b.index = i
+            b.previous_hash = cls._chain[i - 1].hash
+            b.hash = b.calculate_hash()
+
+        # Save to disk
+        try:
+            os.makedirs(os.path.dirname(LEDGER_FILE_PATH), exist_ok=True)
+            data = [b.to_dict() for b in cls._chain]
+            with open(LEDGER_FILE_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to persist blockchain ledger to disk after purge: {e}")
+
+        # Update Neo4j: clear all blocks and rewrite remaining chain
+        def _do_neo4j_purge(s: Session):
+            s.run("MATCH (b:Block) DETACH DELETE b")
+            cls._save_ledger_to_session(s)
+
+        try:
+            if session is not None:
+                _do_neo4j_purge(session)
+            else:
+                from backend.database import db
+                with db.get_session() as s:
+                    _do_neo4j_purge(s)
+        except Exception as e:
+            logger.warning(f"Could not purge blockchain blocks from Neo4j database: {e}")
+
+        logger.info(f"Purged {purged_count} blockchain evidence blocks for case '{case_id}'. Total blocks now: {len(cls._chain)}.")
+        return purged_count
+
+    @classmethod
+    def save_ledger(cls, session: Optional[Session] = None):
+        # 1. Local disk persistence backup
         try:
             os.makedirs(os.path.dirname(LEDGER_FILE_PATH), exist_ok=True)
             data = [b.to_dict() for b in cls._chain]
@@ -446,31 +497,186 @@ class BlockchainService:
         except Exception as e:
             logger.error(f"Failed to persist blockchain ledger to disk: {e}")
 
-    @classmethod
-    def load_ledger(cls):
-        if not os.path.exists(LEDGER_FILE_PATH):
-            return
+        # 2. Neo4j Cloud Database Persistence
         try:
-            with open(LEDGER_FILE_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            cls._chain = []
-            for item in data:
-                block = Block(
-                    index=item["index"],
-                    timestamp=item["timestamp"],
-                    case_id=item["case_id"],
-                    evidence_hash=item["evidence_hash"],
-                    merkle_root=item["merkle_root"],
-                    previous_hash=item["previous_hash"],
-                    nonce=item.get("nonce", 0),
-                    investigator_id=item.get("investigator_id", "SYSTEM_INGEST"),
-                    document_type=item.get("document_type", "CASE_MASTER"),
-                    document_id=item.get("document_id"),
-                    document_name=item.get("document_name")
-                )
-                block.hash = item.get("hash", block.calculate_hash())
-                cls._chain.append(block)
-            logger.info(f"Loaded {len(cls._chain)} blockchain blocks from persistent ledger.")
+            if session is not None:
+                cls._save_ledger_to_session(session)
+            else:
+                from backend.database import db
+                with db.get_session() as s:
+                    cls._save_ledger_to_session(s)
         except Exception as e:
-            logger.error(f"Failed to load blockchain ledger file: {e}")
-            cls._chain = []
+            logger.warning(f"Could not persist blockchain blocks to Neo4j database: {e}")
+
+    @classmethod
+    def _save_ledger_to_session(cls, session: Session):
+        if not cls._chain:
+            return
+        blocks_data = [b.to_dict() for b in cls._chain]
+        cypher = """
+        UNWIND $blocks AS b
+        MERGE (blk:Block {index: b.index})
+        SET blk.timestamp = b.timestamp,
+            blk.case_id = b.case_id,
+            blk.evidence_hash = b.evidence_hash,
+            blk.merkle_root = b.merkle_root,
+            blk.previous_hash = b.previous_hash,
+            blk.hash = b.hash,
+            blk.nonce = b.nonce,
+            blk.investigator_id = b.investigator_id,
+            blk.document_type = b.document_type,
+            blk.document_id = b.document_id,
+            blk.document_name = b.document_name
+        """
+        session.run(cypher, {"blocks": blocks_data})
+        link_cypher = """
+        MATCH (b1:Block), (b2:Block)
+        WHERE b2.index = b1.index + 1
+        MERGE (b1)-[:CHAINED_TO]->(b2)
+        """
+        session.run(link_cypher)
+
+    @classmethod
+    def reset_ledger(cls, session: Optional[Session] = None):
+        """
+        Completely resets the blockchain ledger, clearing all blocks and re-initializing the genesis block.
+        """
+        cls.create_genesis_block()
+
+        def _do_reset(s: Session):
+            s.run("MATCH (b:Block) DETACH DELETE b")
+            cls._save_ledger_to_session(s)
+
+        try:
+            if session is not None:
+                _do_reset(session)
+            else:
+                from backend.database import db
+                with db.get_session() as s:
+                    _do_reset(s)
+        except Exception as e:
+            logger.warning(f"Could not reset blockchain blocks in Neo4j: {e}")
+
+    @classmethod
+    def load_ledger(cls, session: Optional[Session] = None):
+        # 1. Try loading from Neo4j shared database first
+        loaded_from_db = False
+        try:
+            if session is not None:
+                loaded_from_db = cls._load_ledger_from_session(session)
+            else:
+                from backend.database import db
+                with db.get_session() as s:
+                    loaded_from_db = cls._load_ledger_from_session(s)
+        except Exception as e:
+            logger.warning(f"Could not query blockchain blocks from Neo4j database: {e}")
+
+        if not loaded_from_db or not cls._chain:
+            # 2. Fallback to local file if Neo4j is offline or empty
+            if os.path.exists(LEDGER_FILE_PATH):
+                try:
+                    with open(LEDGER_FILE_PATH, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    cls._chain = []
+                    for item in data:
+                        block = Block(
+                            index=item["index"],
+                            timestamp=item["timestamp"],
+                            case_id=item["case_id"],
+                            evidence_hash=item["evidence_hash"],
+                            merkle_root=item["merkle_root"],
+                            previous_hash=item["previous_hash"],
+                            nonce=item.get("nonce", 0),
+                            investigator_id=item.get("investigator_id", "SYSTEM_INGEST"),
+                            document_type=item.get("document_type", "CASE_MASTER"),
+                            document_id=item.get("document_id"),
+                            document_name=item.get("document_name")
+                        )
+                        block.hash = item.get("hash", block.calculate_hash())
+                        cls._chain.append(block)
+                    logger.info(f"Loaded {len(cls._chain)} blockchain blocks from persistent ledger file.")
+                    # Sync file ledger to Neo4j if loaded from file
+                    try:
+                        if session is not None:
+                            cls._save_ledger_to_session(session)
+                        else:
+                            from backend.database import db
+                            with db.get_session() as s:
+                                cls._save_ledger_to_session(s)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.error(f"Failed to load blockchain ledger file: {e}")
+                    cls._chain = []
+
+        # 3. Check for orphaned blocks from deleted cases
+        if cls._chain:
+            try:
+                cls._clean_orphans(session)
+            except Exception as e:
+                logger.warning(f"Orphan block check failed: {e}")
+
+    @classmethod
+    def _clean_orphans(cls, session: Optional[Session] = None):
+        def _do(s: Session):
+            cypher_cases = "MATCH (c:Case) RETURN DISTINCT c.case_id AS case_id"
+            rows = s.run(cypher_cases).data()
+            active_cases = set(r["case_id"] for r in rows if r.get("case_id"))
+            active_cases.add("SYSTEM_GENESIS")
+
+            orphans = [b for b in cls._chain if b.case_id not in active_cases]
+            if orphans:
+                logger.warning(f"Found {len(orphans)} orphaned blockchain blocks for deleted cases: {set(b.case_id for b in orphans)}. Purging...")
+                cls._chain = [b for b in cls._chain if b.case_id in active_cases]
+                for i in range(1, len(cls._chain)):
+                    b = cls._chain[i]
+                    b.index = i
+                    b.previous_hash = cls._chain[i - 1].hash
+                    b.hash = b.calculate_hash()
+
+                # Persist cleaned ledger to file & DB
+                data = [b.to_dict() for b in cls._chain]
+                os.makedirs(os.path.dirname(LEDGER_FILE_PATH), exist_ok=True)
+                with open(LEDGER_FILE_PATH, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+
+                s.run("MATCH (b:Block) DETACH DELETE b")
+                cls._save_ledger_to_session(s)
+
+        if session is not None:
+            _do(session)
+        else:
+            from backend.database import db
+            with db.get_session() as s:
+                _do(s)
+
+    @classmethod
+    def _load_ledger_from_session(cls, session: Session) -> bool:
+        cypher = """
+        MATCH (b:Block)
+        RETURN properties(b) as props
+        ORDER BY b.index ASC
+        """
+        rows = session.run(cypher).data()
+        if not rows:
+            return False
+        cls._chain = []
+        for r in rows:
+            p = r.get("props") or {}
+            block = Block(
+                index=int(p["index"]),
+                timestamp=float(p["timestamp"]),
+                case_id=str(p["case_id"]),
+                evidence_hash=str(p["evidence_hash"]),
+                merkle_root=str(p["merkle_root"]),
+                previous_hash=str(p["previous_hash"]),
+                nonce=int(p.get("nonce", 0)),
+                investigator_id=str(p.get("investigator_id", "SYSTEM_INGEST")),
+                document_type=str(p.get("document_type", "CASE_MASTER")),
+                document_id=p.get("document_id"),
+                document_name=p.get("document_name")
+            )
+            block.hash = str(p.get("hash", block.calculate_hash()))
+            cls._chain.append(block)
+        logger.info(f"Loaded {len(cls._chain)} blockchain blocks from Neo4j database.")
+        return True

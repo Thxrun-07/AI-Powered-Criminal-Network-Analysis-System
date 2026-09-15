@@ -12,12 +12,12 @@ router = APIRouter(prefix="/api/v1/blockchain", tags=["Blockchain Chain of Custo
 @router.get("/ledger", summary="Get Immutable Blockchain Ledger Blocks")
 def get_blockchain_ledger(
     case_id: Optional[str] = Query(None, description="Filter ledger blocks by case ID"),
-    limit: int = Query(50, ge=1, le=500, description="Max blocks to retrieve")
+    limit: int = Query(500, ge=1, le=5000, description="Max blocks to retrieve")
 ):
     """Retrieves recent cryptographic evidence blocks from the blockchain ledger."""
     try:
         return {
-            "total_blocks": len(BlockchainService.get_ledger(case_id=case_id, limit=1000)),
+            "total_blocks": len(BlockchainService.get_ledger(case_id=case_id, limit=5000)),
             "case_id_filter": case_id,
             "blocks": BlockchainService.get_ledger(case_id=case_id, limit=limit)
         }

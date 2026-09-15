@@ -182,7 +182,7 @@ export default function App() {
             {view === 'insights' && <PatternInsightsModule cases={cases} insights={insights} setInsights={setInsights} openAiDossier={openAiDossierModal} addToast={addToast} />}
             {view === 'blockchain' && <BlockchainModule cases={cases} fetchCases={fetchCases} addToast={addToast} />}
             {view === 'cases' && <CaseRegistryModule cases={cases} fetchCases={fetchCases} selectedCase={selectedCase} setSelectedCase={setSelectedCase} openAiDossier={openAiDossierModal} promptDeleteCase={promptDeleteCase} changeView={changeView} theme={theme} addToast={addToast} />}
-            {view === 'ingest' && <DataIngestionModule fetchCases={fetchCases} changeView={changeView} addToast={addToast} />}
+            {view === 'ingest' && <CaseRegistryModule cases={cases} fetchCases={fetchCases} selectedCase={selectedCase} setSelectedCase={setSelectedCase} openAiDossier={openAiDossierModal} promptDeleteCase={promptDeleteCase} changeView={changeView} theme={theme} addToast={addToast} />}
           </div>
         </main>
       </div>

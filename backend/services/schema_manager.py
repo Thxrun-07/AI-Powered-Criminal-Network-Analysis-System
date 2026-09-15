@@ -17,6 +17,7 @@ CONSTRAINTS = [
     ("constraint_transaction_id", "CREATE CONSTRAINT constraint_transaction_id IF NOT EXISTS FOR (t:Transaction) REQUIRE t.transaction_id IS UNIQUE"),
     ("constraint_prior_case_id", "CREATE CONSTRAINT constraint_prior_case_id IF NOT EXISTS FOR (pc:PriorCase) REQUIRE pc.prior_case_id IS UNIQUE"),
     ("constraint_source_record_id", "CREATE CONSTRAINT constraint_source_record_id IF NOT EXISTS FOR (sr:SourceRecord) REQUIRE sr.source_record_id IS UNIQUE"),
+    ("constraint_block_index", "CREATE CONSTRAINT constraint_block_index IF NOT EXISTS FOR (b:Block) REQUIRE b.index IS UNIQUE"),
 ]
 
 INDEXES = [

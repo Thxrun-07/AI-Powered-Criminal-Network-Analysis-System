@@ -2,9 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { API, esc, LABEL_COLOR, Entity } from '../services/api';
 
 export interface EntityConnection {
-  target_id: string;
+  target_id?: string;
   target_name?: string;
-  rel_type: string;
+  rel_type?: string;
+  neighbor_id?: string;
+  neighbor_name?: string;
+  relationship?: string;
+  direction?: string;
   [key: string]: unknown;
 }
 
@@ -25,7 +29,23 @@ export function EntityModalContent({ data, onClose, openEntityModal }: EntityMod
   if (!data) return null;
   const d = data as EntityModalData;
   const node = (d.node || d) as Entity & { display_name?: string; entity_id?: string };
-  const connections: EntityConnection[] = (d.connections || []) as EntityConnection[];
+  const rawConnections: EntityConnection[] = (d.connections || []) as EntityConnection[];
+  const seenKeys = new Set<string>();
+  const connections: EntityConnection[] = [];
+  for (const c of rawConnections) {
+    const relType = (c.rel_type || c.relationship || 'CONNECTED') as string;
+    if (['CHAINED_TO', 'PREVIOUS_BLOCK'].includes(relType)) continue;
+    const targetId = (c.target_id || c.neighbor_id || '') as string;
+    const dirArrow = c.direction === 'INCOMING' ? '←' : '→';
+    const key = `${relType}_${dirArrow}_${targetId}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    connections.push(c);
+  }
+
+  const propsDict = (node.properties as Record<string, unknown>) || node;
+  const displayName = node.name || node.display_name || propsDict.name || propsDict.display_name || propsDict.handle || propsDict.phone_number || propsDict.account_number || node.id || node.entity_id;
+  const entityId = node.id || node.entity_id || propsDict.person_id || propsDict.phone_number || propsDict.account_number || propsDict.handle_id || '';
 
   return (
     <div>
@@ -33,14 +53,14 @@ export function EntityModalContent({ data, onClose, openEntityModal }: EntityMod
       <div className="flex items-center gap-3 mb-3.5" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
         <span className="dot" style={{ width: '16px', height: '16px', background: LABEL_COLOR[node.labels?.[0] || ''] || '#94a3b8', borderRadius: '50%' }}></span>
         <div>
-          <h3 className="font-semibold text-base">{esc(node.name || node.display_name || node.id)}</h3>
-          <div className="mono text-xs" style={{ fontSize: '12px', color: 'var(--text-faint)' }}>ID: {esc(node.id || node.entity_id)}</div>
+          <h3 className="font-semibold text-base" style={{ margin: 0 }}>{esc(displayName)}</h3>
+          <div className="mono text-xs" style={{ fontSize: '12px', color: 'var(--text-faint)' }}>ID: {esc(entityId)}</div>
         </div>
       </div>
 
       <div className="kv mb-5" style={{ marginBottom: '20px' }}>
-        {Object.entries((node.properties as Record<string, unknown>) || node)
-          .filter(([k]) => !['properties', 'labels', 'node', 'connections'].includes(k))
+        {Object.entries(propsDict)
+          .filter(([k]) => !['properties', 'labels', 'node', 'connections', 'total_connections', 'entity_id'].includes(k))
           .map(([k, v]) => (
             <div key={k}>
               <div className="k">{esc(k)}</div>
@@ -53,15 +73,29 @@ export function EntityModalContent({ data, onClose, openEntityModal }: EntityMod
         <div>
           <div className="font-bold text-sm mb-2.5" style={{ fontWeight: 700, fontSize: '14px', marginBottom: '10px' }}>Direct Connections ({connections.length}):</div>
           <div style={{ maxHeight: '240px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '10px' }}>
-            {connections.map((c, idx) => (
-              <div key={idx} className="list-row flex items-center justify-between transition hover:bg-surface-hover" style={{ cursor: 'pointer' }} onClick={() => { onClose(); openEntityModal(c.target_id); }}>
-                <div>
-                  <div className="l-name font-medium">{esc(c.target_name || c.target_id)}</div>
-                  <div className="l-sub mono text-xs">{esc(c.rel_type)} → {esc(c.target_id)}</div>
+            {connections.map((c, idx) => {
+              const targetId = (c.target_id || c.neighbor_id || '') as string;
+              const targetName = (c.target_name || c.neighbor_name || targetId) as string;
+              const relType = (c.rel_type || c.relationship || 'CONNECTED') as string;
+              const dirArrow = c.direction === 'INCOMING' ? '←' : '→';
+
+              return (
+                <div
+                  key={idx}
+                  className="list-row flex items-center justify-between transition hover:bg-surface-hover"
+                  style={{ cursor: 'pointer', padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                  onClick={() => { onClose(); openEntityModal(targetId); }}
+                >
+                  <div>
+                    <div className="l-name font-medium" style={{ fontWeight: 600, fontSize: '13.5px' }}>{esc(targetName)}</div>
+                    <div className="l-sub mono text-xs" style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '2px' }}>
+                      <span style={{ color: 'var(--accent)' }}>{esc(relType)}</span> {dirArrow} <span style={{ opacity: 0.8 }}>{esc(targetId)}</span>
+                    </div>
+                  </div>
+                  <button className="neu-btn ghost text-xs" style={{ fontSize: '11px', padding: '4px 10px' }}>INSPECT</button>
                 </div>
-                <span className="tag plain">Inspect</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

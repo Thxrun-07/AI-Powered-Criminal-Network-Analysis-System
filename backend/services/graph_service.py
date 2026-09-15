@@ -21,12 +21,14 @@ class GraphService:
             cypher = """
             MATCH (n)
             WHERE ($case_id IS NULL OR $case_id IN n.case_ids)
+              AND NOT 'Block' IN labels(n)
               AND ($labels IS NULL OR size($labels) = 0 OR any(l IN labels(n) WHERE l IN $labels))
               AND NOT ('Phone' IN labels(n) AND (n.owner_person_id IS NULL OR n.owner_person_id = '') AND NOT coalesce(n.phone_number, '') STARTS WITH '99999')
             OPTIONAL MATCH (n)-[r]->(m)
-            WHERE ($case_id IS NULL OR $case_id IN m.case_ids)
-              AND ($labels IS NULL OR size($labels) = 0 OR any(l IN labels(m) WHERE l IN $labels))
-              AND NOT ('Phone' IN labels(m) AND (m.owner_person_id IS NULL OR m.owner_person_id = '') AND NOT coalesce(m.phone_number, '') STARTS WITH '99999')
+            WHERE (m IS NULL OR $case_id IS NULL OR $case_id IN m.case_ids)
+              AND (m IS NULL OR NOT 'Block' IN labels(m))
+              AND (m IS NULL OR $labels IS NULL OR size($labels) = 0 OR any(l IN labels(m) WHERE l IN $labels))
+              AND NOT (m IS NOT NULL AND 'Phone' IN labels(m) AND (m.owner_person_id IS NULL OR m.owner_person_id = '') AND NOT coalesce(m.phone_number, '') STARTS WITH '99999')
             RETURN labels(n) as n_labels, properties(n) as n_props,
                    elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
                    labels(m) as m_labels, properties(m) as m_props
@@ -36,10 +38,12 @@ class GraphService:
             cypher = """
             MATCH (n)
             WHERE ($case_id IS NULL OR $case_id IN n.case_ids)
+              AND NOT 'Block' IN labels(n)
               AND ($labels IS NULL OR size($labels) = 0 OR any(l IN labels(n) WHERE l IN $labels))
             OPTIONAL MATCH (n)-[r]->(m)
-            WHERE ($case_id IS NULL OR $case_id IN m.case_ids)
-              AND ($labels IS NULL OR size($labels) = 0 OR any(l IN labels(m) WHERE l IN $labels))
+            WHERE (m IS NULL OR $case_id IS NULL OR $case_id IN m.case_ids)
+              AND (m IS NULL OR NOT 'Block' IN labels(m))
+              AND (m IS NULL OR $labels IS NULL OR size($labels) = 0 OR any(l IN labels(m) WHERE l IN $labels))
             RETURN labels(n) as n_labels, properties(n) as n_props,
                    elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
                    labels(m) as m_labels, properties(m) as m_props
@@ -284,15 +288,17 @@ class GraphService:
         target_node = node_res[0]["n"]
         labels = node_res[0]["labels"]
 
-        # Fetch 1-hop connections
+        # Fetch 1-hop connections (excluding Blockchain Block ledger nodes and CHAINED_TO internal edges)
         rel_cypher = """
         MATCH (n)-[r]-(neighbor)
-        WHERE n.person_id = $id OR n.phone_number = $id OR n.account_number = $id
+        WHERE (n.person_id = $id OR n.phone_number = $id OR n.account_number = $id
            OR n.vin = $id OR n.handle_id = $id OR n.ip_address = $id
            OR n.location_id = $id OR n.fir_id = $id OR n.prior_case_id = $id
            OR n.case_id = $id OR n.cell_tower_id = $id OR n.source_record_id = $id
            OR n.license_plate = $id OR n.transaction_id = $id
-           OR elementId(n) = $id
+           OR elementId(n) = $id)
+           AND NOT 'Block' IN labels(neighbor)
+           AND NOT type(r) IN ['CHAINED_TO', 'PREVIOUS_BLOCK']
         RETURN type(r) as relationship_type,
                startNode(r) = n as is_outgoing,
                properties(r) as relationship_properties,
@@ -303,15 +309,35 @@ class GraphService:
         """
         rel_rows = session.run(rel_cypher, {"id": entity_id}).data()
 
+        seen_keys = set()
         connections = []
         for row in rel_rows:
+            n_labels = row.get("neighbor_labels") or []
+            if "Block" in n_labels:
+                continue
+            rel_t = row["relationship_type"]
+            if rel_t in ["CHAINED_TO", "PREVIOUS_BLOCK"]:
+                continue
+
+            nid = str(row["neighbor_id"])
+            nname = row.get("neighbor_name") or nid
+            direction = "OUTGOING" if row["is_outgoing"] else "INCOMING"
+
+            dedup_key = (rel_t, direction, nid)
+            if dedup_key in seen_keys:
+                continue
+            seen_keys.add(dedup_key)
+
             connections.append({
-                "relationship": row["relationship_type"],
-                "direction": "OUTGOING" if row["is_outgoing"] else "INCOMING",
+                "relationship": rel_t,
+                "rel_type": rel_t,
+                "direction": direction,
                 "relationship_properties": row["relationship_properties"],
-                "neighbor_id": str(row["neighbor_id"]),
-                "neighbor_name": row.get("neighbor_name"),
-                "neighbor_labels": row.get("neighbor_labels") or [],
+                "neighbor_id": nid,
+                "target_id": nid,
+                "neighbor_name": nname,
+                "target_name": nname,
+                "neighbor_labels": n_labels,
                 "neighbor_properties": row.get("neighbor_properties") or {}
             })
 
@@ -660,6 +686,13 @@ class GraphService:
         """
         session.run(update_multicase_cypher, {"case_id": case_id})
 
+        # 5d. Purge blockchain evidence blocks for this deleted case
+        try:
+            from backend.services.blockchain_service import BlockchainService
+            BlockchainService.purge_case_blocks(case_id, session=session)
+        except Exception as e:
+            logger.error(f"Failed to purge blockchain blocks for case '{case_id}': {e}")
+
         logger.info(
             f"Deleted case '{case_id}': {nodes_removed} nodes removed, "
             f"{nodes_detached} nodes detached, {total_rels_removed} rels removed."
@@ -677,6 +710,11 @@ class GraphService:
     def reset_database(cls, session: Session) -> Dict[str, Any]:
         logger.warning("Executing complete database wipe via reset_database...")
         res = session.run("MATCH (n) DETACH DELETE n")
+        try:
+            from backend.services.blockchain_service import BlockchainService
+            BlockchainService.reset_ledger(session=session)
+        except Exception as e:
+            logger.error(f"Failed to reset blockchain ledger: {e}")
         logger.info("Database reset complete.")
         return {"status": "success", "message": "Graph database successfully cleared."}
 

@@ -10,12 +10,15 @@ from backend.database import db
 @pytest.fixture(autouse=True)
 def isolate_blockchain_ledger(monkeypatch, tmp_path):
     """Redirect blockchain ledger writes to a temporary file so tests never
-    pollute the committed data/blockchain_ledger.json."""
+    pollute the committed data/blockchain_ledger.json or the Neo4j database."""
     test_ledger = str(tmp_path / "blockchain_ledger.json")
     monkeypatch.setattr("backend.services.blockchain_service.LEDGER_FILE_PATH", test_ledger)
     # Reset the in-memory chain so each test starts fresh
     from backend.services.blockchain_service import BlockchainService
     BlockchainService._chain = []
+    monkeypatch.setattr(BlockchainService, "_load_ledger_from_session", classmethod(lambda cls, s: False))
+    monkeypatch.setattr(BlockchainService, "_save_ledger_to_session", classmethod(lambda cls, s: None))
+    monkeypatch.setattr(BlockchainService, "_clean_orphans", classmethod(lambda cls, s=None: None))
 
 
 @pytest.fixture(autouse=True)

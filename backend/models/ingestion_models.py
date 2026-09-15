@@ -4,6 +4,9 @@ from pydantic import BaseModel, Field
 
 class CaseMetadata(BaseModel):
     case_id: Optional[str] = Field(default="CASE_001", description="Unique case identifier")
+    case_name: Optional[str] = Field(default=None, description="Case title or designation")
+    case_title: Optional[str] = Field(default=None, description="Alternative case title field")
+    title: Optional[str] = Field(default=None, description="Title of the case")
     fir_number: Optional[str] = Field(default=None, description="FIR Number e.g. FIR/0045/2026")
     department: Optional[str] = Field(default="Delhi Police / Law Enforcement", description="Department/PS")
     reporting_date: Optional[str] = Field(default=None, description="Reporting date YYYY-MM-DD")

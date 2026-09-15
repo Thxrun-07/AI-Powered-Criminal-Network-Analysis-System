@@ -97,7 +97,7 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
         </div>
         <div className="flex gap-2 border-b mb-5 pb-2.5" style={{display:'flex', gap:'8px', borderBottom:'1px solid var(--border)', marginBottom:'20px', paddingBottom:'10px'}}>
           <button className={`neu-btn transition-colors ${activeTab === 'json' ? 'primary' : 'ghost'}`} onClick={() => setActiveTab('json')}>Structured JSON Payload</button>
-          <button className={`neu-btn transition-colors ${activeTab === 'file' ? 'primary' : 'ghost'}`} onClick={() => setActiveTab('file')}>Upload File (JSON / CSV)</button>
+          <button className={`neu-btn transition-colors ${activeTab === 'file' ? 'primary' : 'ghost'}`} onClick={() => setActiveTab('file')}>Upload File (JSON / CSV / PDF)</button>
           <button className={`neu-btn transition-colors ${activeTab === 'narrative' ? 'primary' : 'ghost'}`} onClick={() => setActiveTab('narrative')}>Unstructured Text Narrative</button>
         </div>
 
@@ -119,8 +119,8 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
             <div className="flex flex-col gap-4 items-center justify-center" style={{padding:'36px 20px', border:'2px dashed var(--border)', borderRadius:'var(--radius-sm)', textAlign:'center', marginBottom:'20px', background:'var(--bg1)'}}>
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5" style={{marginBottom:'10px'}}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
               <div className="font-bold text-sm" style={{fontWeight:700, fontSize:'15px', marginBottom:'4px'}}>Select or drag & drop files</div>
-              <div className="text-xs mb-4 text-slate-400" style={{fontSize:'12.5px', color:'var(--text-faint)', marginBottom:'16px'}}>Supports structured `.json` case dossiers, CDR `.csv` phone records, bank `.csv` statements</div>
-              <input type="file" multiple onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiles(Array.from(e.target.files || []))} style={{display:'inline-block'}} />
+              <div className="text-xs mb-4 text-slate-400" style={{fontSize:'12.5px', color:'var(--text-faint)', marginBottom:'16px'}}>Supports structured `.json` case dossiers, `.pdf` FIR reports & complaints, CDR `.csv` phone records, bank statements</div>
+              <input type="file" accept=".json,.csv,.pdf,.txt,.log" multiple onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiles(Array.from(e.target.files || []))} style={{display:'inline-block'}} />
               {files.length > 0 && (
                 <div className="mt-3 text-sm font-semibold text-atlas-cyan" style={{marginTop:'12px', fontSize:'13px', color:'var(--accent)', fontWeight:600}}>
                   Selected {files.length} file{files.length > 1 ? 's' : ''}: {files.map(f => f.name).join(', ')}

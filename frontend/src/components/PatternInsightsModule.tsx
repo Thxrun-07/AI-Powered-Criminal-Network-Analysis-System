@@ -94,10 +94,8 @@ export function PatternInsightsModule({
               if (selectedCase && selectedCase !== '__DELTA__') {
                 const cObj = cases.find(c => c.case_id === selectedCase);
                 openAiDossier(selectedCase, cObj?.case_name || selectedCase);
-              } else if (cases.length) {
-                openAiDossier(cases[0].case_id, cases[0].case_name || cases[0].case_id);
               } else {
-                addToast('Please select a case to generate AI Dossier', 'info');
+                openAiDossier("ALL", "All Ingested Cases Ecosystem & Cross-Links");
               }
             }} style={{display:'inline-flex', alignItems:'center', gap:'6px'}}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>

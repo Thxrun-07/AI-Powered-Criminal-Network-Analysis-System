@@ -96,15 +96,15 @@ def list_cases(
     try:
         with db.get_session() as session:
             return GraphService.list_cases(session, status=status_filter, limit=limit, offset=offset)
-    except ServiceUnavailable as se:
-        logger.warning(f"Neo4j connection dropped in list_cases ({se}), reconnecting...")
+    except (ServiceUnavailable, Neo4jError, Exception) as se:
+        logger.warning(f"Neo4j connection issue in list_cases ({se}), reconnecting...")
         try:
             db.reconnect()
             with db.get_session() as session:
                 return GraphService.list_cases(session, status=status_filter, limit=limit, offset=offset)
         except Exception as retry_err:
             logger.error(f"Reconnection failed in list_cases: {retry_err}")
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(retry_err))
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database temporarily unavailable: {retry_err}")
 
 
 @router.get("/{case_id}", summary="Get Case Summary & Entity Statistics")
@@ -120,8 +120,8 @@ def get_case(case_id: str):
             return case_info
     except HTTPException:
         raise
-    except ServiceUnavailable as se:
-        logger.warning(f"Neo4j connection dropped in get_case ({se}), reconnecting...")
+    except (ServiceUnavailable, Neo4jError, Exception) as se:
+        logger.warning(f"Neo4j connection issue in get_case ({se}), reconnecting...")
         try:
             db.reconnect()
             with db.get_session() as session:

@@ -31,7 +31,7 @@ export function BlockchainModule({ cases, fetchCases, addToast }: BlockchainModu
     setLoading(true);
     try {
       if (!cases.length) await fetchCases();
-      const data = await API.get<{ blocks?: BlockchainBlock[] }>('/api/v1/blockchain/ledger');
+      const data = await API.get<{ blocks?: BlockchainBlock[] }>('/api/v1/blockchain/ledger?limit=500');
       setBlocks(data.blocks || []);
     } catch (e) {
       addToast((e as Error).message, 'err');

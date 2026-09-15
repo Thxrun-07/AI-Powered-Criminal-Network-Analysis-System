@@ -157,7 +157,12 @@ interface SendOptions extends RequestInit {
 
 export const API = {
   formatError(d: ApiErrorDetail | string | null, status: number): string {
-    if (!d) return `HTTP ${status}`;
+    if (!d) {
+      if (status === 500 || status === 502 || status === 504) {
+        return 'Backend server is not running on port 8000. Please start it with: python -m uvicorn backend.main:app --port 8000';
+      }
+      return `HTTP ${status}`;
+    }
     if (typeof d === 'string') return d;
     if (d.detail) {
       if (typeof d.detail === 'string') return d.detail;
@@ -255,8 +260,7 @@ export const NAV: NavOption[] = [
   { id: 'rankings', label: 'Rankings', icon: 'M3 17l4-4 4 4 5-5 4 4' },
   { id: 'insights', label: 'Pattern Insights', icon: 'M12 3l1.9 5.6L19 10l-5.1 1.9L12 17.5l-1.9-5.6L5 10l5.1-1.4L12 3Z' },
   { id: 'blockchain', label: 'Chain of Custody', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' },
-  { id: 'cases', label: 'Case Registry', icon: 'M3 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z' },
-  { id: 'ingest', label: 'Data Ingestion', icon: 'M12 5v14m-7-7h14' }
+  { id: 'cases', label: 'Case Registry', icon: 'M3 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z' }
 ];
 
 export const TITLES: Record<string, [string, string]> = {
@@ -267,6 +271,5 @@ export const TITLES: Record<string, [string, string]> = {
   rankings: ['Centrality Rankings', 'Degree, PageRank, betweenness, and cross-case relevance'],
   insights: ['Forensic Insights', 'Automated graph intelligence and anomaly detection'],
   blockchain: ['Chain of Custody Ledger', 'Cryptographic SHA-256 Merkle block proof & anti-tampering evidence verification'],
-  cases: ['Case Registry', 'Manage cases, entity breakdowns, and case deletion'],
-  ingest: ['Data Ingestion', 'Ingest structured case JSON, CSV files, or raw narratives']
+  cases: ['Case Registry', 'Manage cases, entity breakdowns, case ingestion, and deletion']
 };

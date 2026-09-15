@@ -1930,7 +1930,7 @@ function BlockchainModule({ cases, fetchCases, addToast }) {
     setLoading(true);
     try {
       if (!cases.length) await fetchCases();
-      const data = await API.get('/api/v1/blockchain/ledger');
+      const data = await API.get('/api/v1/blockchain/ledger?limit=500');
       setBlocks(data.blocks || []);
     } catch (e) {
       addToast(e.message, 'err');

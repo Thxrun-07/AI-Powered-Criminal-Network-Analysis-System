@@ -20,6 +20,9 @@ class GeminiService:
         Gathers graph intelligence for a case from Neo4j and uses Gemini 2.5 Flash
         to generate an executive forensic intelligence dossier.
         """
+        if case_id and case_id.upper() in ["ALL", "ALL_CASES", "__DELTA__", "ALL-CASES"]:
+            return cls.generate_ecosystem_brief(session)
+
         # 1. Fetch case node
         case_res = session.run("MATCH (c:Case {case_id: $case_id}) RETURN properties(c) as props", {"case_id": case_id}).single()
         if not case_res:
@@ -153,6 +156,137 @@ Respond in strictly valid JSON matching this schema:
                 f"Conduct field verification and background profile on key suspects: {', '.join(suspect_names[:3])}" if suspect_names else "Establish primary suspect identities."
             ],
             ai_model="graph-heuristic-synthesis"
+        )
+
+    @classmethod
+    def generate_ecosystem_brief(cls, session: Session) -> CaseAIInsightResponse:
+        """
+        Synthesizes an ecosystem-wide forensic intelligence dossier covering all ingested cases,
+        cross-case bridge entities, shared infrastructure, and criminal syndicate networks.
+        """
+        # 1. Fetch total cases
+        cases_cypher = "MATCH (c:Case) RETURN c.case_id as id, c.case_name as name, c.status as status"
+        c_rows = session.run(cases_cypher).data()
+        case_ids = [r["id"] for r in c_rows]
+        case_names = [r.get("name") or r["id"] for r in c_rows]
+
+        # 2. Fetch shared / bridge entities across cases
+        shared_cypher = """
+        MATCH (n)
+        WHERE (n:Person OR n:Phone OR n:BankAccount OR n:Vehicle OR n:SocialHandle OR n:IPAddress)
+          AND size(n.case_ids) > 1
+        RETURN labels(n) as labels,
+               coalesce(n.name, n.phone_number, n.account_number, n.vin, n.handle, n.ip_address, n.person_id) as identifier,
+               n.case_ids as case_ids,
+               coalesce(n.person_id, n.phone_number, n.account_number, n.vin, n.handle_id, n.ip_address) as entity_id
+        LIMIT 25
+        """
+        shared_rows = session.run(shared_cypher).data()
+        shared_summary = [
+            f"Entity '{r.get('identifier')}' ({r.get('labels', ['Entity'])[0]}) connects cases: {', '.join(r.get('case_ids') or [])}"
+            for r in shared_rows
+        ]
+
+        # 3. Fetch cross-case telecommunications and financial links
+        cross_calls_cypher = """
+        MATCH (p1:Phone)-[r:CALLED]->(p2:Phone)
+        WHERE any(c1 IN p1.case_ids WHERE NOT c1 IN p2.case_ids)
+        RETURN p1.phone_number as src, p1.case_ids as src_cases,
+               p2.phone_number as dst, p2.case_ids as dst_cases,
+               r.duration_seconds as duration
+        LIMIT 20
+        """
+        cross_calls = session.run(cross_calls_cypher).data()
+        cross_calls_summary = [
+            f"Phone {r.get('src')} (Cases: {r.get('src_cases')}) -> Phone {r.get('dst')} (Cases: {r.get('dst_cases')}) [Duration: {r.get('duration')}s]"
+            for r in cross_calls
+        ]
+
+        # 4. Fetch top key suspects across the entire network
+        suspects_cypher = """
+        MATCH (p:Person)
+        OPTIONAL MATCH (p)-[r]-()
+        RETURN p.name as name, p.person_id as id, p.case_ids as case_ids, p.roles as roles, count(r) as degree
+        ORDER BY degree DESC
+        LIMIT 10
+        """
+        suspect_rows = session.run(suspects_cypher).data()
+        top_suspects = [
+            f"{r.get('name') or r.get('id')} (Cases: {', '.join(r.get('case_ids') or [])}, Degree: {r.get('degree')})"
+            for r in suspect_rows
+        ]
+
+        from backend.config import settings
+        api_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+
+        if HAS_GENAI and api_key:
+            try:
+                client = genai.Client(api_key=api_key)
+                prompt = f"""
+You are an elite Law Enforcement Intelligence Analyst and Forensic Investigator.
+Synthesize an authoritative Ecosystem-Wide Cross-Case Intelligence Assessment across all ingested criminal investigations.
+
+ECOSYSTEM OVERVIEW:
+- Total Ingested Cases ({len(case_ids)}): {', '.join(case_names)}
+- Shared Cross-Case Entities ({len(shared_rows)}): {json.dumps(shared_summary)}
+- Cross-Case Telecommunication Relays ({len(cross_calls)}): {json.dumps(cross_calls_summary)}
+- Key Suspect Targets ({len(top_suspects)}): {json.dumps(top_suspects)}
+
+Respond in strictly valid JSON matching this schema:
+{{
+  "executive_summary": "Comprehensive strategic executive summary detailing overall criminal syndicate cross-links, multi-case overlaps, and operational threat level across all investigations.",
+  "risk_level": "CRITICAL" or "HIGH" or "MEDIUM" or "LOW",
+  "modus_operandi": "Detailed synthesis of observed cross-case syndication techniques (e.g. shared hawala accounts, burner relay lines, multi-jurisdiction coordination).",
+  "key_suspects": ["List of top primary targets connecting multiple cases with their roles and degree centrality"],
+  "critical_anomalies": ["List of 3-5 critical cross-case anomalies (e.g. bridge nodes, infrastructure reuse, inter-case phone calls)"],
+  "investigative_leads": ["List of 3-5 high-priority joint task force recommendations across cases"]
+}}
+"""
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.2
+                    )
+                )
+                if response.text:
+                    parsed = json.loads(response.text)
+                    return CaseAIInsightResponse(
+                        case_id="ALL_CASES",
+                        case_name="All Ingested Cases Ecosystem Summary",
+                        status="ACTIVE_ECOSYSTEM",
+                        risk_level=parsed.get("risk_level", "CRITICAL"),
+                        executive_summary=parsed.get("executive_summary", "Ecosystem cross-case intelligence analysis completed."),
+                        modus_operandi=parsed.get("modus_operandi", "Multi-jurisdiction criminal syndicate pattern recorded."),
+                        key_suspects=parsed.get("key_suspects", top_suspects[:5]),
+                        critical_anomalies=parsed.get("critical_anomalies", []),
+                        investigative_leads=parsed.get("investigative_leads", []),
+                        ai_model="gemini-2.5-flash"
+                    )
+            except Exception as e:
+                logger.warning(f"Gemini API call failed for ecosystem brief: {e}. Falling back to heuristic synthesis.")
+
+        # Heuristic fallback for ecosystem brief
+        return CaseAIInsightResponse(
+            case_id="ALL_CASES",
+            case_name="All Ingested Cases Ecosystem Summary",
+            status="ACTIVE_ECOSYSTEM",
+            risk_level="CRITICAL" if len(shared_rows) > 0 else "HIGH",
+            executive_summary=f"Multi-case forensic synthesis across {len(case_ids)} active investigations identified {len(shared_rows)} shared cross-case bridge entities and {len(cross_calls)} inter-case communication relays connecting separate syndicates.",
+            modus_operandi=f"Syndicates operate using shared operational infrastructure across jurisdictions. Analysis revealed {len(shared_rows)} cross-case bridge nodes acting as central hubs between distinct crime files.",
+            key_suspects=top_suspects[:5] or ["Multi-case syndicate targets identified in graph"],
+            critical_anomalies=[
+                f"Identified {len(shared_rows)} shared bridge entities linking multiple independent case files.",
+                f"Detected {len(cross_calls)} cross-case telecommunication calls between targets of separate investigations.",
+                f"Multi-jurisdiction operational overlap spanning {len(case_ids)} registered cases."
+            ],
+            investigative_leads=[
+                "Establish a Joint Task Force to coordinate intelligence sharing across all linked case files.",
+                "Issue comprehensive Section 91 CrPC and CDR subpoenas for key bridge entities.",
+                "Perform full topological graph walk around primary bridge targets to map secondary laundering rings."
+            ],
+            ai_model="graph-heuristic-ecosystem-synthesis"
         )
 
     @classmethod

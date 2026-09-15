@@ -12,7 +12,12 @@ def map_ingestion_to_graph_data(ingestion_data: Dict[str, Any]) -> CaseData:
 
     
     # 1. Map CaseMetadata
-    case_name = case_meta.get("case_name") or (f"Operation {case_meta.get('fir_number')}" if case_meta.get("fir_number") else f"Case {case_id}")
+    case_name = (
+        case_meta.get("case_name") or
+        case_meta.get("case_title") or
+        case_meta.get("title") or
+        (f"Operation {case_meta.get('fir_number')}" if case_meta.get("fir_number") else f"Case {case_id}")
+    )
     mapped_metadata = CaseMetadata(
         case_id=case_id,
         case_name=case_name,
