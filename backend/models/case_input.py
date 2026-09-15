@@ -74,6 +74,7 @@ class IngestResponse(BaseModel):
     new_insights: int = Field(default=0, description="Insights generated during this ingestion")
     warnings: List[str] = Field(default_factory=list, description="Ingestion warnings or anomalies")
     insights: List[InsightItem] = Field(default_factory=list, description="Generated case and cross-case insights")
+    case_already_exists: bool = Field(default=False, description="True if case was already present in database")
 
 
 class CaseDeleteRequest(BaseModel):

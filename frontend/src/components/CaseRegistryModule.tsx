@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as vis from 'vis-network/standalone';
 import { API, esc, LABEL_COLOR, getDeterministicSeed, Case, ThemeMode } from '../services/api';
+import { CaseAlreadyExistsModal } from './Modals';
 
 export interface OverlappingCase {
   case_id: string;
@@ -95,6 +96,7 @@ export function CaseRegistryModule({
   const [ingestFiles, setIngestFiles] = useState<File[]>([]);
   const [narrativeText, setNarrativeText] = useState<string>('');
   const [ingesting, setIngesting] = useState<boolean>(false);
+  const [alreadyExistsModal, setAlreadyExistsModal] = useState<{ caseId: string; caseName?: string; status?: string } | null>(null);
 
   // Attach File to Existing Case Modal State
   const [isAttachModalOpen, setIsAttachModalOpen] = useState<boolean>(false);
@@ -202,14 +204,37 @@ export function CaseRegistryModule({
   const handleNewCaseJsonIngest = async () => {
     if (!newCaseTitle.trim()) { addToast('Case Title / Designation is required', 'info'); return; }
     if (!jsonText.trim()) { addToast('Please enter JSON payload', 'info'); return; }
+
+    const targetTitle = newCaseTitle.trim();
+    let targetCaseId = targetTitle;
+    try {
+      const parsedTest = JSON.parse(jsonText);
+      if (parsedTest.case_metadata?.case_id) targetCaseId = parsedTest.case_metadata.case_id;
+    } catch {}
+
+    const existing = cases.find(c =>
+      c.case_id.toLowerCase() === targetCaseId.toLowerCase() ||
+      c.case_id.toLowerCase() === targetTitle.toLowerCase() ||
+      (c.case_name && c.case_name.toLowerCase() === targetTitle.toLowerCase())
+    );
+    if (existing) {
+      setAlreadyExistsModal({ caseId: existing.case_id, caseName: existing.case_name, status: existing.status });
+      return;
+    }
+
     setIngesting(true);
     try {
       const parsed = JSON.parse(jsonText);
       if (!parsed.case_metadata) parsed.case_metadata = {};
-      parsed.case_metadata.case_id = newCaseTitle.trim();
-      parsed.case_metadata.case_name = newCaseTitle.trim();
+      if (!parsed.case_metadata.case_id) parsed.case_metadata.case_id = targetTitle;
+      if (!parsed.case_metadata.case_name) parsed.case_metadata.case_name = targetTitle;
 
-      const res = await API.post<{ case_id?: string; created?: { nodes?: number } }>('/api/v1/ingest/case', parsed);
+      const res = await API.post<{ case_id?: string; created?: { nodes?: number }; case_already_exists?: boolean }>('/api/v1/ingest/case', parsed);
+      if (res.case_already_exists) {
+        setAlreadyExistsModal({ caseId: res.case_id || targetTitle, caseName: targetTitle });
+        await fetchCases();
+        return;
+      }
       addToast(`Successfully ingested Case '${res.case_id}'! Created ${res.created?.nodes || 0} nodes.`, 'ok');
       await fetchCases();
       setIsIngestModalOpen(false);
@@ -226,6 +251,36 @@ export function CaseRegistryModule({
     e.preventDefault();
     if (!newCaseTitle.trim()) { addToast('Case Title / Designation is required', 'info'); return; }
     if (!ingestFiles || ingestFiles.length === 0) { addToast('Please select a file to upload', 'info'); return; }
+
+    const targetTitle = newCaseTitle.trim();
+    // 1. Check title against existing cases
+    const existing = cases.find(c =>
+      c.case_id.toLowerCase() === targetTitle.toLowerCase() ||
+      (c.case_name && c.case_name.toLowerCase() === targetTitle.toLowerCase())
+    );
+    if (existing) {
+      setAlreadyExistsModal({ caseId: existing.case_id, caseName: existing.case_name, status: existing.status });
+      return;
+    }
+
+    // 2. Pre-inspect JSON files for embedded case_id
+    for (const f of ingestFiles) {
+      if (f.name.endsWith('.json')) {
+        try {
+          const text = await f.text();
+          const d = JSON.parse(text);
+          const cid = d.case_metadata?.case_id || d.case_id || (d.case_data && d.case_data.case_metadata?.case_id);
+          if (cid) {
+            const match = cases.find(c => c.case_id.toLowerCase() === cid.toLowerCase() || (c.case_name && c.case_name.toLowerCase() === cid.toLowerCase()));
+            if (match) {
+              setAlreadyExistsModal({ caseId: match.case_id, caseName: match.case_name, status: match.status });
+              return;
+            }
+          }
+        } catch {}
+      }
+    }
+
     setIngesting(true);
     try {
       const formData = new FormData();
@@ -233,12 +288,17 @@ export function CaseRegistryModule({
         formData.append('files', f);
         formData.append('file', f);
       }
-      const url = `/api/v1/ingest?case_id=${encodeURIComponent(newCaseTitle.trim())}`;
-      const res = await API.send<{ case_id?: string }>(url, {
+      const url = `/api/v1/ingest?case_id=${encodeURIComponent(targetTitle)}`;
+      const res = await API.send<{ case_id?: string; case_already_exists?: boolean }>(url, {
         method: 'POST',
         body: formData,
         form: true
       });
+      if (res.case_already_exists) {
+        setAlreadyExistsModal({ caseId: res.case_id || targetTitle, caseName: targetTitle });
+        await fetchCases();
+        return;
+      }
       addToast(`File ingestion complete! Case ID: ${res.case_id}`, 'ok');
       await fetchCases();
       setIsIngestModalOpen(false);
@@ -254,14 +314,30 @@ export function CaseRegistryModule({
   const handleNewCaseNarrativeIngest = async () => {
     if (!newCaseTitle.trim()) { addToast('Case Title / Designation is required', 'info'); return; }
     if (!narrativeText.trim()) { addToast('Please enter intelligence narrative text', 'info'); return; }
+
+    const targetTitle = newCaseTitle.trim();
+    const existing = cases.find(c =>
+      c.case_id.toLowerCase() === targetTitle.toLowerCase() ||
+      (c.case_name && c.case_name.toLowerCase() === targetTitle.toLowerCase())
+    );
+    if (existing) {
+      setAlreadyExistsModal({ caseId: existing.case_id, caseName: existing.case_name, status: existing.status });
+      return;
+    }
+
     setIngesting(true);
     try {
-      const url = `/api/v1/ingest/text?case_id=${encodeURIComponent(newCaseTitle.trim())}`;
-      const res = await API.send<{ case_id?: string }>(url, {
+      const url = `/api/v1/ingest/text?case_id=${encodeURIComponent(targetTitle)}`;
+      const res = await API.send<{ case_id?: string; case_already_exists?: boolean }>(url, {
         method: 'POST',
         body: narrativeText,
         headers: { 'Content-Type': 'text/plain' }
       });
+      if (res.case_already_exists) {
+        setAlreadyExistsModal({ caseId: res.case_id || targetTitle, caseName: targetTitle });
+        await fetchCases();
+        return;
+      }
       addToast(`Narrative intelligence ingested for Case '${res.case_id}'!`, 'ok');
       await fetchCases();
       setIsIngestModalOpen(false);
@@ -864,6 +940,20 @@ export function CaseRegistryModule({
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL 3: CASE ALREADY EXISTS ALERT POPUP */}
+      {alreadyExistsModal && (
+        <CaseAlreadyExistsModal
+          caseId={alreadyExistsModal.caseId}
+          caseName={alreadyExistsModal.caseName}
+          status={alreadyExistsModal.status}
+          onClose={() => setAlreadyExistsModal(null)}
+          onViewCase={(cid) => {
+            loadCaseDetail(cid);
+            setIsIngestModalOpen(false);
+          }}
+        />
       )}
     </div>
   );

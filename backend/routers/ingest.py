@@ -113,6 +113,7 @@ def _combine_results(results: List[IngestResponse]) -> IngestResponse:
         new_insights=len(insights),
         warnings=warnings,
         insights=insights,
+        case_already_exists=all(result.case_already_exists for result in results),
     )
 
 

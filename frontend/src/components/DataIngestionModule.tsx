@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { API, Case } from '../services/api';
+import { CaseAlreadyExistsModal } from './Modals';
 
 export interface DataIngestionModuleProps {
   fetchCases: () => Promise<Case[]>;
@@ -13,6 +14,7 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
   const [files, setFiles] = useState<File[]>([]);
   const [narrativeText, setNarrativeText] = useState<string>('');
   const [ingesting, setIngesting] = useState<boolean>(false);
+  const [alreadyExistsModal, setAlreadyExistsModal] = useState<{ caseId: string; caseName?: string; status?: string } | null>(null);
 
   const sampleJson = {
     "case_metadata": {
@@ -35,10 +37,31 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
 
   const handleJsonIngest = async () => {
     if (!jsonText.trim()) { addToast('Please enter JSON payload', 'info'); return; }
+    
+    let targetCaseId = '';
+    try {
+      const parsedTest = JSON.parse(jsonText);
+      targetCaseId = parsedTest.case_metadata?.case_id || parsedTest.case_id || '';
+    } catch {}
+
+    if (targetCaseId) {
+      const allCases = await fetchCases();
+      const existing = allCases.find(c => c.case_id.toLowerCase() === targetCaseId.toLowerCase());
+      if (existing) {
+        setAlreadyExistsModal({ caseId: existing.case_id, caseName: existing.case_name, status: existing.status });
+        return;
+      }
+    }
+
     setIngesting(true);
     try {
       const parsed = JSON.parse(jsonText);
-      const res = await API.post<{ case_id?: string; created?: { nodes?: number } }>('/api/v1/ingest/case', parsed);
+      const res = await API.post<{ case_id?: string; created?: { nodes?: number }; case_already_exists?: boolean }>('/api/v1/ingest/case', parsed);
+      if (res.case_already_exists) {
+        setAlreadyExistsModal({ caseId: res.case_id || targetCaseId });
+        await fetchCases();
+        return;
+      }
       addToast(`Successfully ingested Case '${res.case_id}'! Created ${res.created?.nodes || 0} nodes.`, 'ok');
       await fetchCases();
       changeView('cases');
@@ -52,6 +75,26 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
   const handleFileUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!files || files.length === 0) { addToast('Please select a file to upload', 'info'); return; }
+
+    // Pre-check for JSON files with existing case_id
+    const allCases = await fetchCases();
+    for (const f of files) {
+      if (f.name.endsWith('.json')) {
+        try {
+          const text = await f.text();
+          const d = JSON.parse(text);
+          const cid = d.case_metadata?.case_id || d.case_id || (d.case_data && d.case_data.case_metadata?.case_id);
+          if (cid) {
+            const match = allCases.find(c => c.case_id.toLowerCase() === cid.toLowerCase() || (c.case_name && c.case_name.toLowerCase() === cid.toLowerCase()));
+            if (match) {
+              setAlreadyExistsModal({ caseId: match.case_id, caseName: match.case_name, status: match.status });
+              return;
+            }
+          }
+        } catch {}
+      }
+    }
+
     setIngesting(true);
     try {
       const formData = new FormData();
@@ -59,7 +102,12 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
         formData.append('files', f);
         formData.append('file', f);
       }
-      const res = await API.send<{ case_id?: string }>('/api/v1/ingest', { method: 'POST', body: formData, form: true });
+      const res = await API.send<{ case_id?: string; case_already_exists?: boolean }>('/api/v1/ingest', { method: 'POST', body: formData, form: true });
+      if (res.case_already_exists) {
+        setAlreadyExistsModal({ caseId: res.case_id || 'Uploaded Case' });
+        await fetchCases();
+        return;
+      }
       addToast(`File ingestion complete! Case ID: ${res.case_id}`, 'ok');
       await fetchCases();
       changeView('cases');
@@ -74,11 +122,16 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
     if (!narrativeText.trim()) { addToast('Please enter intelligence narrative text', 'info'); return; }
     setIngesting(true);
     try {
-      const res = await API.send<{ case_id?: string }>('/api/v1/ingest/text', {
+      const res = await API.send<{ case_id?: string; case_already_exists?: boolean }>('/api/v1/ingest/text', {
         method: 'POST',
         body: narrativeText,
         headers: { 'Content-Type': 'text/plain' }
       });
+      if (res.case_already_exists) {
+        setAlreadyExistsModal({ caseId: res.case_id || 'Narrative Case' });
+        await fetchCases();
+        return;
+      }
       addToast(`Narrative intelligence ingested for Case '${res.case_id}'!`, 'ok');
       await fetchCases();
       changeView('cases');
@@ -143,6 +196,17 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
           </div>
         )}
       </div>
+
+      {/* Case Already Uploaded Alert Popup */}
+      {alreadyExistsModal && (
+        <CaseAlreadyExistsModal
+          caseId={alreadyExistsModal.caseId}
+          caseName={alreadyExistsModal.caseName}
+          status={alreadyExistsModal.status}
+          onClose={() => setAlreadyExistsModal(null)}
+          onViewCase={() => changeView('cases')}
+        />
+      )}
     </div>
   );
 }

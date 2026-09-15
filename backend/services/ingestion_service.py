@@ -58,7 +58,8 @@ class IngestionService:
 
         # 1. Merge Case Node
         res_case = session.run(gw.CASE_MERGE, {**gw.case_params(case_meta), "now": now}).single()
-        if res_case and res_case["was_created"]:
+        case_already_exists = not bool(res_case and res_case.get("was_created"))
+        if not case_already_exists:
             nodes_created += 1
         else:
             nodes_matched += 1
@@ -219,7 +220,8 @@ class IngestionService:
             new_cross_case_links=cross_case_links_count,
             new_insights=len(insights),
             warnings=warnings,
-            insights=insights
+            insights=insights,
+            case_already_exists=case_already_exists
         )
         logger.info(f"Completed ingestion for case '{case_id}': created {nodes_created} nodes, {rel_created} rels, generated {len(insights)} insights.")
         return response
