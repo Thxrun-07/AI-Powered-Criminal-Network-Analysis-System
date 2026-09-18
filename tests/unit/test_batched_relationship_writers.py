@@ -55,7 +55,13 @@ def _find(session, statement: str):
 
 def test_case_001_issues_one_batch_per_relationship_writer(monkeypatch):
     session, _ = _ingest(_sample("case_001_homicide.json"), monkeypatch)
-    for name, stmt in gw.BATCHED_RELATIONSHIP_STATEMENTS.items():
+    expected_writers = [
+        "CALLED_MERGE", "TRANSACTIONS_MERGE", "SURVEILLANCE_LOCATIONS_MERGE",
+        "SURVEILLANCE_PERSON_LOCATED_AT", "SURVEILLANCE_VEHICLE_LOCATED_AT",
+        "PRIOR_CASES_MERGE", "INTEL_REPORTS_MERGE"
+    ]
+    for name in expected_writers:
+        stmt = gw.BATCHED_RELATIONSHIP_STATEMENTS[name]
         hits = _find(session, stmt)
         assert len(hits) == 1, f"{name} expected exactly once, got {len(hits)}"
         assert _norm(stmt).startswith("UNWIND $rows AS row"), name
@@ -141,7 +147,7 @@ def test_transaction_rows(monkeypatch):
     rows = params["rows"]
     assert len(rows) == 3
     assert rows[0] == {"src_acc": "ACC-E1", "dst_acc": "ACC-E2", "tx_id": "TX-E-1", "amount": 100.0, "currency": "INR",
-                       "timestamp": "2026-01-02T10:00:00Z", "tx_type": "NEFT", "reference_no": "REF-1", "source_record_id": "SR-E-1"}
+                       "timestamp": "2026-01-02T10:00:00Z", "tx_type": "NEFT", "reference_no": "REF-1", "description": None, "source_record_id": "SR-E-1"}
     assert rows[2]["currency"] == "USD" and rows[2]["tx_type"] == "WIRE" and rows[2]["reference_no"] is None
 
 
@@ -202,11 +208,12 @@ def test_called_statement_semantics():
     q = _norm(gw.CALLED_MERGE)
     assert "MERGE (p1:Phone {phone_number: row.src_phone}) ON CREATE SET p1.created_at = $now, p1.updated_at = $now, p1.case_ids = [$case_id]" in q
     assert "MERGE (p2:Phone {phone_number: row.dst_phone}) ON CREATE SET p2.created_at = $now, p2.updated_at = $now, p2.case_ids = [$case_id]" in q
+    assert "ON MATCH SET p1.updated_at = $now, p1.case_ids = CASE WHEN $case_id IN p1.case_ids THEN p1.case_ids ELSE p1.case_ids + $case_id END" in q
+    assert "ON MATCH SET p2.updated_at = $now, p2.case_ids = CASE WHEN $case_id IN p2.case_ids THEN p2.case_ids ELSE p2.case_ids + $case_id END" in q
     assert "MERGE (p1)-[r:CALLED {call_id: row.call_id}]->(p2)" in q
     assert ("ON CREATE SET r.timestamp = row.timestamp, r.duration_seconds = row.duration_seconds, r.type = row.type, "
             "r.cell_tower = row.cell_tower, r.source_record_id = row.source_record_id, r.case_id = $case_id, r.created_at = $now") in q
     assert "ON MATCH SET r.duration_seconds = row.duration_seconds, r.cell_tower = coalesce(row.cell_tower, r.cell_tower)" in q
-    assert "ON MATCH SET p1" not in q and "ON MATCH SET p2" not in q  # no case_ids append on match (unchanged)
     assert "RETURN" not in q
 
 
@@ -214,14 +221,17 @@ def test_transactions_statement_semantics():
     q = _norm(gw.TRANSACTIONS_MERGE)
     assert "MERGE (b1:BankAccount {account_number: row.src_acc}) ON CREATE SET b1.created_at = $now, b1.updated_at = $now, b1.case_ids = [$case_id]" in q
     assert "MERGE (b2:BankAccount {account_number: row.dst_acc}) ON CREATE SET b2.created_at = $now, b2.updated_at = $now, b2.case_ids = [$case_id]" in q
+    assert "ON MATCH SET b1.updated_at = $now, b1.case_ids = CASE WHEN $case_id IN b1.case_ids THEN b1.case_ids ELSE b1.case_ids + $case_id END" in q
+    assert "ON MATCH SET b2.updated_at = $now, b2.case_ids = CASE WHEN $case_id IN b2.case_ids THEN b2.case_ids ELSE b2.case_ids + $case_id END" in q
     assert ("MERGE (t:Transaction {transaction_id: row.tx_id}) ON CREATE SET t.amount = row.amount, t.currency = row.currency, "
             "t.timestamp = row.timestamp, t.transaction_type = row.tx_type, t.reference_no = row.reference_no, "
+            "t.description = row.description, "
             "t.source_record_id = row.source_record_id, t.created_at = $now, t.case_ids = [$case_id]") in q
     assert ("MERGE (b1)-[r:TRANSFERRED_TO {transaction_id: row.tx_id}]->(b2) ON CREATE SET r.amount = row.amount, r.currency = row.currency, "
             "r.timestamp = row.timestamp, r.transaction_type = row.tx_type, r.reference_no = row.reference_no, "
+            "r.description = row.description, "
             "r.source_record_id = row.source_record_id, r.case_id = $case_id") in q
     assert "WITH t MATCH (c:Case {case_id: $case_id}) MERGE (c)-[:INVOLVES]->(t) RETURN (t.created_at = $now) AS was_created" in q
-    assert "ON MATCH" not in q  # Transaction node & edge never updated on match (unchanged)
 
 
 def test_surveillance_statements_semantics():
@@ -263,7 +273,7 @@ def test_intel_statement_semantics():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("payload, nodes, rels, src, matched", [
-    ("dataset/case_001_homicide.json", 21, 40, 1, 0),
+    ("dataset/case_001_homicide.json", 21, 41, 1, 0),
     ("dataset/case_002_fraud.json", 10, 18, 0, 0),
     (EDGE_FIXTURE, 20, 44, 4, 0),
 ])

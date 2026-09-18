@@ -19,7 +19,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
   const [edgeLabelMode, setEdgeLabelMode] = useState<string>('clean');
   const [limit, setLimit] = useState<number>(1200);
   const [hideIsolated, setHideIsolated] = useState<boolean>(false);
-  const [physicsEnabled, setPhysicsEnabled] = useState<boolean>(true);
+  const [physicsEnabled, setPhysicsEnabled] = useState<boolean>(false);
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState<boolean>(false);
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
@@ -187,6 +187,13 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         const nObj = graphNodes.find(n => n.id === targetId);
         if (nObj) setSelectedNode(nObj);
       }
+    });
+
+    net.once('stabilizationIterationsDone', () => {
+      net.setOptions({ physics: { enabled: false } });
+    });
+    net.once('stabilized', () => {
+      net.setOptions({ physics: { enabled: false } });
     });
 
     networkRef.current = net;

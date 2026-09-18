@@ -187,7 +187,7 @@ def test_g_unknown_event_fields_rejected(api):
     r = client.post(URL, json={"case_id": "C", "events": [_person()], "confirm_replace": True})
     assert r.status_code == 422 and r.json()["detail"][0]["type"] == "extra_forbidden"
     # payload validated against the typed model (missing required field / wrong shape)
-    r = client.post(URL, json={"case_id": "C", "events": [{"event_type": "TRANSACTION", "payload": {"transaction_id": "T", "source_account": "A", "target_account": "B"}}]})
+    r = client.post(URL, json={"case_id": "C", "events": [{"event_type": "TRANSACTION", "payload": {"transaction_id": "T", "source_account": "A"}}]})
     assert r.status_code == 422 and {e["type"] for e in r.json()["detail"]} == {"missing"}
     # missing case_id / empty batch
     assert client.post(URL, json={"events": [_person()]}).status_code == 422
@@ -236,12 +236,12 @@ def test_i_idempotent_replay_uses_same_statements_and_reports_matched():
     with _client(lambda: next(kinds, SecondRunSession)()) as (client, runs):
         r1 = client.post(URL, json={"case_id": "CASE-2024-001", "events": evs})
         r2 = client.post(URL, json={"case_id": "CASE-2024-001", "events": evs})
-    assert r1.status_code == 201 and r1.json()["writes"] == {"nodes_created": 20, "nodes_matched": 0, "relationships_written": 40, "statements_executed": 23}
-    assert r2.status_code == 200 and r2.json()["writes"] == {"nodes_created": 0, "nodes_matched": 20, "relationships_written": 40, "statements_executed": 23}
+    assert r1.status_code == 201 and r1.json()["writes"] == {"nodes_created": 20, "nodes_matched": 0, "relationships_written": 41, "statements_executed": 24}
+    assert r2.status_code == 200 and r2.json()["writes"] == {"nodes_created": 0, "nodes_matched": 20, "relationships_written": 41, "statements_executed": 24}
     known = {" ".join(s.split()) for s in gw.ALL_WRITE_STATEMENTS.values()}
     w1 = [(" ".join(q.split()), {k: v for k, v in p.items() if k != "now"}) for q, p in runs[0].queries if " ".join(q.split()) in known]
     w2 = [(" ".join(q.split()), {k: v for k, v in p.items() if k != "now"}) for q, p in runs[1].queries if " ".join(q.split()) in known]
-    assert w1 == w2 and len(w1) == 23
+    assert w1 == w2 and len(w1) == 24
 
 
 def test_j_mixed_event_types_in_one_batch_plan_order_and_counts(api):

@@ -542,6 +542,13 @@ class BlockchainService:
         Completely resets the blockchain ledger, clearing all blocks and re-initializing the genesis block.
         """
         cls.create_genesis_block()
+        try:
+            data = [b.to_dict() for b in cls._chain]
+            os.makedirs(os.path.dirname(LEDGER_FILE_PATH), exist_ok=True)
+            with open(LEDGER_FILE_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as exc:
+            logger.warning(f"Could not overwrite persistent ledger file during reset: {exc}")
 
         def _do_reset(s: Session):
             s.run("MATCH (b:Block) DETACH DELETE b")
@@ -612,43 +619,39 @@ class BlockchainService:
         # 3. Check for orphaned blocks from deleted cases
         if cls._chain:
             try:
-                cls._clean_orphans(session)
+                def _check_and_clean_orphans(s: Session):
+                    cypher_cases = "MATCH (c:Case) RETURN DISTINCT c.case_id AS case_id"
+                    rows = s.run(cypher_cases).data()
+                    active_cases = set(r["case_id"] for r in rows if r.get("case_id"))
+                    active_cases.add("SYSTEM_GENESIS")
+
+                    orphans = [b for b in cls._chain if b.case_id not in active_cases]
+                    if orphans:
+                        logger.warning(f"Found {len(orphans)} orphaned blockchain blocks for deleted cases: {set(b.case_id for b in orphans)}. Purging...")
+                        cls._chain = [b for b in cls._chain if b.case_id in active_cases]
+                        for i in range(1, len(cls._chain)):
+                            b = cls._chain[i]
+                            b.index = i
+                            b.previous_hash = cls._chain[i - 1].hash
+                            b.hash = b.calculate_hash()
+
+                        # Persist cleaned ledger to file & DB
+                        data = [b.to_dict() for b in cls._chain]
+                        os.makedirs(os.path.dirname(LEDGER_FILE_PATH), exist_ok=True)
+                        with open(LEDGER_FILE_PATH, "w", encoding="utf-8") as f:
+                            json.dump(data, f, indent=2)
+
+                        s.run("MATCH (b:Block) DETACH DELETE b")
+                        cls._save_ledger_to_session(s)
+
+                if session is not None:
+                    _check_and_clean_orphans(session)
+                else:
+                    from backend.database import db
+                    with db.get_session() as s:
+                        _check_and_clean_orphans(s)
             except Exception as e:
                 logger.warning(f"Orphan block check failed: {e}")
-
-    @classmethod
-    def _clean_orphans(cls, session: Optional[Session] = None):
-        def _do(s: Session):
-            cypher_cases = "MATCH (c:Case) RETURN DISTINCT c.case_id AS case_id"
-            rows = s.run(cypher_cases).data()
-            active_cases = set(r["case_id"] for r in rows if r.get("case_id"))
-            active_cases.add("SYSTEM_GENESIS")
-
-            orphans = [b for b in cls._chain if b.case_id not in active_cases]
-            if orphans:
-                logger.warning(f"Found {len(orphans)} orphaned blockchain blocks for deleted cases: {set(b.case_id for b in orphans)}. Purging...")
-                cls._chain = [b for b in cls._chain if b.case_id in active_cases]
-                for i in range(1, len(cls._chain)):
-                    b = cls._chain[i]
-                    b.index = i
-                    b.previous_hash = cls._chain[i - 1].hash
-                    b.hash = b.calculate_hash()
-
-                # Persist cleaned ledger to file & DB
-                data = [b.to_dict() for b in cls._chain]
-                os.makedirs(os.path.dirname(LEDGER_FILE_PATH), exist_ok=True)
-                with open(LEDGER_FILE_PATH, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-
-                s.run("MATCH (b:Block) DETACH DELETE b")
-                cls._save_ledger_to_session(s)
-
-        if session is not None:
-            _do(session)
-        else:
-            from backend.database import db
-            with db.get_session() as s:
-                _do(s)
 
     @classmethod
     def _load_ledger_from_session(cls, session: Session) -> bool:

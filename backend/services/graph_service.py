@@ -207,13 +207,15 @@ class GraphService:
 
         edges_list = list(edges_dict.values())
 
-        # 2. Filter out isolated / disconnected nodes (nodes without any relationship)
-        connected_node_ids = set()
-        for e in edges_list:
-            connected_node_ids.add(e["source"])
-            connected_node_ids.add(e["target"])
-
-        filtered_nodes = [node for n_id, node in nodes_dict.items() if n_id in connected_node_ids]
+        # 2. Filter out isolated / disconnected nodes only when core_only is True
+        if core_only:
+            connected_node_ids = set()
+            for e in edges_list:
+                connected_node_ids.add(e["source"])
+                connected_node_ids.add(e["target"])
+            filtered_nodes = [node for n_id, node in nodes_dict.items() if n_id in connected_node_ids]
+        else:
+            filtered_nodes = list(nodes_dict.values())
 
         return {
             "case_id": case_id,
@@ -222,6 +224,7 @@ class GraphService:
             "nodes": filtered_nodes,
             "edges": edges_list
         }
+
 
 
     @classmethod

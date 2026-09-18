@@ -157,12 +157,7 @@ interface SendOptions extends RequestInit {
 
 export const API = {
   formatError(d: ApiErrorDetail | string | null, status: number): string {
-    if (!d) {
-      if (status === 500 || status === 502 || status === 504) {
-        return 'Backend server is not running on port 8000. Please start it with: python -m uvicorn backend.main:app --port 8000';
-      }
-      return `HTTP ${status}`;
-    }
+    if (!d) return `HTTP ${status}`;
     if (typeof d === 'string') return d;
     if (d.detail) {
       if (typeof d.detail === 'string') return d.detail;

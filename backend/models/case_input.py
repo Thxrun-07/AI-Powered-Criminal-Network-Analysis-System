@@ -15,6 +15,7 @@ class CaseMetadata(BaseModel):
     case_id: str = Field(..., description="Unique Case Identifier (e.g. CASE-2024-001)")
     case_name: str = Field(..., description="Case title or operation name")
     case_type: Optional[str] = Field(default="GENERAL_INVESTIGATION", description="HOMICIDE, FRAUD, NARCOTICS, CYBERCRIME, etc.")
+    priority: Optional[str] = Field(default="HIGH", description="Priority level e.g. HIGH, MEDIUM, LOW, CRITICAL")
     status: Optional[str] = Field(default="OPEN", description="OPEN, UNDER_INVESTIGATION, CHARGED, CLOSED")
     jurisdiction: Optional[str] = Field(default=None, description="Department or state jurisdiction")
     lead_investigator: Optional[str] = Field(default=None, description="Name or badge of lead investigator")
@@ -74,7 +75,8 @@ class IngestResponse(BaseModel):
     new_insights: int = Field(default=0, description="Insights generated during this ingestion")
     warnings: List[str] = Field(default_factory=list, description="Ingestion warnings or anomalies")
     insights: List[InsightItem] = Field(default_factory=list, description="Generated case and cross-case insights")
-    case_already_exists: bool = Field(default=False, description="True if case was already present in database")
+    converted_case_data: Optional[CaseData] = Field(default=None, description="The exact converted CaseData JSON document")
+
 
 
 class CaseDeleteRequest(BaseModel):

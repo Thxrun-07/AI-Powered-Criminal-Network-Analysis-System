@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import List, Optional, Tuple, Dict, Any, Union
 from fastapi import APIRouter, File, UploadFile, HTTPException, Header, Query, Body, status, Response
@@ -56,18 +57,22 @@ def _detect_case_data_document(filename: str, text_content: str) -> Optional[Cas
                 document = (mapped, "DS-DEFAULT", "1.0")
             except Exception as exc:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"File '{filename}' declares 'case_metadata' but could not be parsed or mapped into a valid CaseData document: {str(exc)}",
                 )
 
     if document is None:
         return None
 
-    if not document[0].case_metadata.case_id:  # same guard as POST /api/cases/ingest
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File '{filename}': missing required 'case_metadata.case_id' in ingestion payload.",
-        )
+    if not document[0].case_metadata or not document[0].case_metadata.case_id:
+        # Check if case_id can be derived or if it's missing
+        if getattr(document[0].case_metadata, "fir_number", None):
+            document[0].case_metadata.case_id = f"CASE_{document[0].case_metadata.fir_number.replace('/', '_')}"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File '{filename}': missing required 'case_metadata.case_id' in ingestion payload.",
+            )
     return document
 
 
@@ -113,8 +118,51 @@ def _combine_results(results: List[IngestResponse]) -> IngestResponse:
         new_insights=len(insights),
         warnings=warnings,
         insights=insights,
-        case_already_exists=all(result.case_already_exists for result in results),
+        converted_case_data=last.converted_case_data
     )
+
+
+def _extract_text_from_file(filename: str, contents: bytes, content_type: Optional[str] = None) -> str:
+    filename_lower = filename.lower()
+    is_pdf = (
+        filename_lower.endswith(".pdf")
+        or (content_type and content_type.lower() == "application/pdf")
+        or contents.startswith(b"%PDF-")
+    )
+    if is_pdf:
+        extracted_pages = []
+        try:
+            import pdfplumber
+            with pdfplumber.open(io.BytesIO(contents)) as pdf:
+                for idx, page in enumerate(pdf.pages):
+                    page_text = page.extract_text() or ""
+                    if page_text.strip():
+                        extracted_pages.append(f"--- Page {idx + 1} ---\n{page_text}")
+        except Exception as exc:
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(io.BytesIO(contents))
+                for idx, page in enumerate(reader.pages):
+                    page_text = page.extract_text() or ""
+                    if page_text.strip():
+                        extracted_pages.append(f"--- Page {idx + 1} ---\n{page_text}")
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"File '{filename}' is a PDF but could not be parsed: {str(exc)}",
+                )
+        text_content = "\n\n".join(extracted_pages).strip()
+        if not text_content:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"File '{filename}' is a PDF but contains no extractable text (it may be scanned, image-only, or encrypted).",
+            )
+        return text_content
+
+    try:
+        return contents.decode("utf-8")
+    except UnicodeDecodeError:
+        return contents.decode("utf-8", errors="ignore")
 
 
 @router.post("/ingest", response_model=IngestResponse, summary="Ingest case files (structured CSV & unstructured text) to Neo4j")
@@ -144,20 +192,31 @@ async def ingest_files(
 
     documents: List[CaseDocument] = []
     legacy_files = 0
+    seen_hashes: set = set()
+
     for upload_file in upload_files:
         filename = upload_file.filename or "uploaded_file.txt"
         contents = await upload_file.read()
-        text_content = contents.decode("utf-8", errors="ignore")
+        file_hash = hashlib.sha256(contents).hexdigest()
+        if file_hash in seen_hashes:
+            logger.info(f"Skipping duplicate file payload '{filename}' (SHA256: {file_hash[:8]}).")
+            continue
+        seen_hashes.add(file_hash)
+
+        text_content = _extract_text_from_file(filename, contents, upload_file.content_type)
 
         # CaseData JSON documents take the same pipeline as POST /api/cases/ingest and never
         # enter the legacy CaseIngestionEngine; everything else is parsed exactly as before.
         document = _detect_case_data_document(filename, text_content)
         if document is not None:
+            case_doc, ds_id, ds_ver = document
+            if case_id:
+                case_doc.case_metadata.case_id = case_id
             logger.info(
-                f"'{filename}' is a CaseData JSON document (case '{document[0].case_metadata.case_id}'); "
+                f"'{filename}' is a CaseData JSON document (case '{case_doc.case_metadata.case_id}'); "
                 f"bypassing legacy CaseIngestionEngine."
             )
-            documents.append(document)
+            documents.append((case_doc, ds_id, ds_ver))
             continue
 
         engine.parse_file(filename, text_content)
@@ -166,20 +225,29 @@ async def ingest_files(
     if legacy_files:
         consolidated_case = engine.consolidate()
         graph_case_data = map_ingestion_to_graph_data(consolidated_case.model_dump())
+        if case_id:
+            graph_case_data.case_metadata.case_id = case_id
         documents.append((graph_case_data, "DS-DEFAULT", "1.0"))
+
+    if not documents:
+        raise HTTPException(status_code=400, detail="No valid unique documents were found to ingest.")
+
+
+
 
     try:
         with db.get_session() as session:
-            results = [
-                IngestionService.ingest_case(
+            results = []
+            for doc_data, doc_ds_id, doc_ds_ver in documents:
+                res = IngestionService.ingest_case(
                     session=session,
                     case_data=doc_data,
                     dataset_id=doc_ds_id,
                     dataset_version=doc_ds_ver,
                     mode="merge"
                 )
-                for doc_data, doc_ds_id, doc_ds_ver in documents
-            ]
+                res.converted_case_data = doc_data
+                results.append(res)
             response.status_code = status.HTTP_201_CREATED
             return _combine_results(results)
     except Exception as e:

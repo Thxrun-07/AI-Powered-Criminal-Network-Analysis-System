@@ -7,6 +7,11 @@ class Person(AuditFields):
     person_id: str = Field(..., description="Unique deterministic identifier for Person")
     name: str = Field(..., description="Full Name")
     aliases: List[str] = Field(default_factory=list, description="Known aliases")
+    age: Optional[int] = Field(default=None, description="Age of person")
+    gender: Optional[str] = Field(default=None, description="Gender (e.g., Male, Female, Non-Binary)")
+    address: Optional[str] = Field(default=None, description="Residential or primary address")
+    occupation: Optional[str] = Field(default=None, description="Occupation or professional title")
+    phone_numbers: List[str] = Field(default_factory=list, description="Associated phone numbers")
     dob: Optional[str] = Field(default=None, description="Date of birth (YYYY-MM-DD)")
     national_id: Optional[str] = Field(default=None, description="National ID or Passport number")
     roles: List[str] = Field(default_factory=list, description="Roles in case, e.g. Suspect, Victim, Witness, Associate")
@@ -55,6 +60,7 @@ class SocialHandle(AuditFields):
     associated_email: Optional[str] = Field(default=None, description="Associated email address")
     display_name: Optional[str] = Field(default=None, description="Profile display name")
     owner_person_id: Optional[str] = Field(default=None, description="Person ID who uses this handle")
+    linked_ip: Optional[str] = Field(default=None, description="Associated IP address")
     properties: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -63,6 +69,7 @@ class IPAddress(AuditFields):
     ip_type: Optional[str] = Field(default="IPV4", description="IPV4 or IPV6")
     asn: Optional[str] = Field(default=None, description="Autonomous System Number")
     isp: Optional[str] = Field(default=None, description="Internet Service Provider")
+    owner_person_id: Optional[str] = Field(default=None, description="Person ID who uses this IP address")
     properties: Dict[str, Any] = Field(default_factory=dict)
 
 

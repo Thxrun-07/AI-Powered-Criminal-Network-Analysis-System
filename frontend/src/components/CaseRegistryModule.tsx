@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as vis from 'vis-network/standalone';
 import { API, esc, LABEL_COLOR, getDeterministicSeed, Case, ThemeMode } from '../services/api';
-import { CaseAlreadyExistsModal } from './Modals';
 
 export interface OverlappingCase {
   case_id: string;
@@ -96,7 +95,6 @@ export function CaseRegistryModule({
   const [ingestFiles, setIngestFiles] = useState<File[]>([]);
   const [narrativeText, setNarrativeText] = useState<string>('');
   const [ingesting, setIngesting] = useState<boolean>(false);
-  const [alreadyExistsModal, setAlreadyExistsModal] = useState<{ caseId: string; caseName?: string; status?: string } | null>(null);
 
   // Attach File to Existing Case Modal State
   const [isAttachModalOpen, setIsAttachModalOpen] = useState<boolean>(false);
@@ -188,6 +186,17 @@ export function CaseRegistryModule({
           },
           nodes: { borderWidth: 2 }, edges: { width: 1.2 }
         });
+
+        miniNetworkInstanceRef.current.once('stabilizationIterationsDone', () => {
+          if (miniNetworkInstanceRef.current) {
+            miniNetworkInstanceRef.current.setOptions({ physics: { enabled: false } });
+          }
+        });
+        miniNetworkInstanceRef.current.once('stabilized', () => {
+          if (miniNetworkInstanceRef.current) {
+            miniNetworkInstanceRef.current.setOptions({ physics: { enabled: false } });
+          }
+        });
       } catch (e) {}
     }
     renderMiniGraph();
@@ -204,37 +213,14 @@ export function CaseRegistryModule({
   const handleNewCaseJsonIngest = async () => {
     if (!newCaseTitle.trim()) { addToast('Case Title / Designation is required', 'info'); return; }
     if (!jsonText.trim()) { addToast('Please enter JSON payload', 'info'); return; }
-
-    const targetTitle = newCaseTitle.trim();
-    let targetCaseId = targetTitle;
-    try {
-      const parsedTest = JSON.parse(jsonText);
-      if (parsedTest.case_metadata?.case_id) targetCaseId = parsedTest.case_metadata.case_id;
-    } catch {}
-
-    const existing = cases.find(c =>
-      c.case_id.toLowerCase() === targetCaseId.toLowerCase() ||
-      c.case_id.toLowerCase() === targetTitle.toLowerCase() ||
-      (c.case_name && c.case_name.toLowerCase() === targetTitle.toLowerCase())
-    );
-    if (existing) {
-      setAlreadyExistsModal({ caseId: existing.case_id, caseName: existing.case_name, status: existing.status });
-      return;
-    }
-
     setIngesting(true);
     try {
       const parsed = JSON.parse(jsonText);
       if (!parsed.case_metadata) parsed.case_metadata = {};
-      if (!parsed.case_metadata.case_id) parsed.case_metadata.case_id = targetTitle;
-      if (!parsed.case_metadata.case_name) parsed.case_metadata.case_name = targetTitle;
+      parsed.case_metadata.case_id = newCaseTitle.trim();
+      parsed.case_metadata.case_name = newCaseTitle.trim();
 
-      const res = await API.post<{ case_id?: string; created?: { nodes?: number }; case_already_exists?: boolean }>('/api/v1/ingest/case', parsed);
-      if (res.case_already_exists) {
-        setAlreadyExistsModal({ caseId: res.case_id || targetTitle, caseName: targetTitle });
-        await fetchCases();
-        return;
-      }
+      const res = await API.post<{ case_id?: string; created?: { nodes?: number } }>('/api/v1/ingest/case', parsed);
       addToast(`Successfully ingested Case '${res.case_id}'! Created ${res.created?.nodes || 0} nodes.`, 'ok');
       await fetchCases();
       setIsIngestModalOpen(false);
@@ -251,54 +237,18 @@ export function CaseRegistryModule({
     e.preventDefault();
     if (!newCaseTitle.trim()) { addToast('Case Title / Designation is required', 'info'); return; }
     if (!ingestFiles || ingestFiles.length === 0) { addToast('Please select a file to upload', 'info'); return; }
-
-    const targetTitle = newCaseTitle.trim();
-    // 1. Check title against existing cases
-    const existing = cases.find(c =>
-      c.case_id.toLowerCase() === targetTitle.toLowerCase() ||
-      (c.case_name && c.case_name.toLowerCase() === targetTitle.toLowerCase())
-    );
-    if (existing) {
-      setAlreadyExistsModal({ caseId: existing.case_id, caseName: existing.case_name, status: existing.status });
-      return;
-    }
-
-    // 2. Pre-inspect JSON files for embedded case_id
-    for (const f of ingestFiles) {
-      if (f.name.endsWith('.json')) {
-        try {
-          const text = await f.text();
-          const d = JSON.parse(text);
-          const cid = d.case_metadata?.case_id || d.case_id || (d.case_data && d.case_data.case_metadata?.case_id);
-          if (cid) {
-            const match = cases.find(c => c.case_id.toLowerCase() === cid.toLowerCase() || (c.case_name && c.case_name.toLowerCase() === cid.toLowerCase()));
-            if (match) {
-              setAlreadyExistsModal({ caseId: match.case_id, caseName: match.case_name, status: match.status });
-              return;
-            }
-          }
-        } catch {}
-      }
-    }
-
     setIngesting(true);
     try {
       const formData = new FormData();
       for (const f of ingestFiles) {
         formData.append('files', f);
-        formData.append('file', f);
       }
-      const url = `/api/v1/ingest?case_id=${encodeURIComponent(targetTitle)}`;
-      const res = await API.send<{ case_id?: string; case_already_exists?: boolean }>(url, {
+      const url = `/api/v1/ingest?case_id=${encodeURIComponent(newCaseTitle.trim())}`;
+      const res = await API.send<{ case_id?: string }>(url, {
         method: 'POST',
         body: formData,
         form: true
       });
-      if (res.case_already_exists) {
-        setAlreadyExistsModal({ caseId: res.case_id || targetTitle, caseName: targetTitle });
-        await fetchCases();
-        return;
-      }
       addToast(`File ingestion complete! Case ID: ${res.case_id}`, 'ok');
       await fetchCases();
       setIsIngestModalOpen(false);
@@ -314,30 +264,14 @@ export function CaseRegistryModule({
   const handleNewCaseNarrativeIngest = async () => {
     if (!newCaseTitle.trim()) { addToast('Case Title / Designation is required', 'info'); return; }
     if (!narrativeText.trim()) { addToast('Please enter intelligence narrative text', 'info'); return; }
-
-    const targetTitle = newCaseTitle.trim();
-    const existing = cases.find(c =>
-      c.case_id.toLowerCase() === targetTitle.toLowerCase() ||
-      (c.case_name && c.case_name.toLowerCase() === targetTitle.toLowerCase())
-    );
-    if (existing) {
-      setAlreadyExistsModal({ caseId: existing.case_id, caseName: existing.case_name, status: existing.status });
-      return;
-    }
-
     setIngesting(true);
     try {
-      const url = `/api/v1/ingest/text?case_id=${encodeURIComponent(targetTitle)}`;
-      const res = await API.send<{ case_id?: string; case_already_exists?: boolean }>(url, {
+      const url = `/api/v1/ingest/text?case_id=${encodeURIComponent(newCaseTitle.trim())}`;
+      const res = await API.send<{ case_id?: string }>(url, {
         method: 'POST',
         body: narrativeText,
         headers: { 'Content-Type': 'text/plain' }
       });
-      if (res.case_already_exists) {
-        setAlreadyExistsModal({ caseId: res.case_id || targetTitle, caseName: targetTitle });
-        await fetchCases();
-        return;
-      }
       addToast(`Narrative intelligence ingested for Case '${res.case_id}'!`, 'ok');
       await fetchCases();
       setIsIngestModalOpen(false);
@@ -360,7 +294,6 @@ export function CaseRegistryModule({
       const formData = new FormData();
       for (const f of attachFiles) {
         formData.append('files', f);
-        formData.append('file', f);
       }
       const res = await API.send<{ case_id?: string }>(`/api/v1/ingest?case_id=${encodeURIComponent(selectedCase)}`, {
         method: 'POST',
@@ -743,110 +676,34 @@ export function CaseRegistryModule({
                 </span>
               </div>
 
-              {/* Source Mode Tabs */}
-              <div className="flex gap-2 border-b pb-2" style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                <button
-                  className={`neu-btn transition-colors ${ingestTab === 'file' ? 'primary' : 'ghost'}`}
-                  style={{ padding: '6px 12px', fontSize: '12.5px' }}
-                  onClick={() => setIngestTab('file')}
-                >
-                  📁 Upload Document (.pdf, .json, .csv, .txt)
-                </button>
-                <button
-                  className={`neu-btn transition-colors ${ingestTab === 'json' ? 'primary' : 'ghost'}`}
-                  style={{ padding: '6px 12px', fontSize: '12.5px' }}
-                  onClick={() => setIngestTab('json')}
-                >
-                  Structured JSON Payload
-                </button>
-                <button
-                  className={`neu-btn transition-colors ${ingestTab === 'narrative' ? 'primary' : 'ghost'}`}
-                  style={{ padding: '6px 12px', fontSize: '12.5px' }}
-                  onClick={() => setIngestTab('narrative')}
-                >
-                  Unstructured Text Narrative
-                </button>
-              </div>
-
-              {/* Tab 1: File Upload */}
-              {ingestTab === 'file' && (
-                <form onSubmit={handleNewCaseFileUpload} className="flex flex-col gap-4">
-                  <div style={{ padding: '24px 16px', border: '2px dashed var(--border)', borderRadius: '8px', textAlign: 'center', background: 'var(--bg1)' }}>
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5" style={{ margin: '0 auto 10px' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                    <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>Select case document or data sheet</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-faint)', marginBottom: '14px' }}>
-                      Supports `.pdf` FIR reports, `.csv` call logs, `.json` dossiers, `.txt` narratives
+              {/* File Upload Section */}
+              <form onSubmit={handleNewCaseFileUpload} className="flex flex-col gap-4">
+                <div style={{ padding: '24px 16px', border: '2px dashed var(--border)', borderRadius: '8px', textAlign: 'center', background: 'var(--bg1)' }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5" style={{ margin: '0 auto 10px' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                  <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>Upload Document (.pdf, .txt, .csv, .json)</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-faint)', marginBottom: '14px' }}>
+                    Supports <strong>.pdf</strong>, <strong>.txt</strong>, <strong>.csv</strong>, and <strong>.json</strong> files without hallucination or duplicate data
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf,.txt,.csv,.json"
+                    multiple
+                    onChange={(e) => setIngestFiles(Array.from(e.target.files || []))}
+                    style={{ display: 'inline-block' }}
+                  />
+                  {ingestFiles.length > 0 && (
+                    <div style={{ marginTop: '10px', fontSize: '12.5px', color: 'var(--accent)', fontWeight: 600 }}>
+                      Selected {ingestFiles.length} file{ingestFiles.length > 1 ? 's' : ''}: {ingestFiles.map(f => f.name).join(', ')}
                     </div>
-                    <input
-                      type="file"
-                      accept=".json,.csv,.pdf,.txt,.log"
-                      multiple
-                      onChange={(e) => setIngestFiles(Array.from(e.target.files || []))}
-                      style={{ display: 'inline-block' }}
-                    />
-                    {ingestFiles.length > 0 && (
-                      <div style={{ marginTop: '10px', fontSize: '12.5px', color: 'var(--accent)', fontWeight: 600 }}>
-                        Selected {ingestFiles.length} file{ingestFiles.length > 1 ? 's' : ''}: {ingestFiles.map(f => f.name).join(', ')}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex justify-end gap-2" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
-                    <button type="button" className="neu-btn ghost" onClick={() => setIsIngestModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="neu-btn primary" disabled={ingesting || ingestFiles.length === 0 || !newCaseTitle.trim()}>
-                      {ingesting ? 'Uploading & Extracting…' : 'Ingest New Case'}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Tab 2: JSON Payload */}
-              {ingestTab === 'json' && (
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase' }}>JSON Payload</label>
-                    <button className="neu-btn ghost" style={{ padding: '2px 6px', fontSize: '11px' }} onClick={() => setJsonText(JSON.stringify(sampleJson, null, 2))}>
-                      Load Sample JSON
-                    </button>
-                  </div>
-                  <textarea
-                    className="control mono"
-                    rows={10}
-                    style={{ width: '100%', fontSize: '12px', lineHeight: 1.5 }}
-                    value={jsonText}
-                    onChange={(e) => setJsonText(e.target.value)}
-                    placeholder="Paste Case JSON structure here..."
-                  />
-                  <div className="flex justify-end gap-2" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
-                    <button type="button" className="neu-btn ghost" onClick={() => setIsIngestModalOpen(false)}>Cancel</button>
-                    <button className="neu-btn primary" disabled={ingesting || !newCaseTitle.trim()} onClick={handleNewCaseJsonIngest}>
-                      {ingesting ? 'Ingesting into Graph…' : 'Commit to Neo4j Graph'}
-                    </button>
-                  </div>
+                  )}
                 </div>
-              )}
-
-              {/* Tab 3: Unstructured Text Narrative */}
-              {ingestTab === 'narrative' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '8px' }}>
-                    Informant / FIR Narrative Text
-                  </label>
-                  <textarea
-                    className="control"
-                    rows={8}
-                    style={{ width: '100%', fontSize: '13px', lineHeight: 1.5 }}
-                    value={narrativeText}
-                    onChange={(e) => setNarrativeText(e.target.value)}
-                    placeholder="Paste complaint or report text here..."
-                  />
-                  <div className="flex justify-end gap-2" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
-                    <button type="button" className="neu-btn ghost" onClick={() => setIsIngestModalOpen(false)}>Cancel</button>
-                    <button className="neu-btn primary" disabled={ingesting || !newCaseTitle.trim()} onClick={handleNewCaseNarrativeIngest}>
-                      {ingesting ? 'Extracting Entities via AI…' : 'Ingest via AI Engine'}
-                    </button>
-                  </div>
+                <div className="flex justify-end gap-2" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
+                  <button type="button" className="neu-btn ghost" onClick={() => setIsIngestModalOpen(false)}>Cancel</button>
+                  <button type="submit" className="neu-btn primary" disabled={ingesting || ingestFiles.length === 0 || !newCaseTitle.trim()}>
+                    {ingesting ? 'Uploading & Extracting…' : 'Ingest New Case'}
+                  </button>
                 </div>
-              )}
+              </form>
             </div>
           </div>
         </div>
@@ -869,92 +726,38 @@ export function CaseRegistryModule({
             </div>
 
             <div className="modal-body flex flex-col gap-4" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="flex gap-2 border-b pb-2" style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
-                <button
-                  className={`neu-btn transition-colors ${attachTab === 'file' ? 'primary' : 'ghost'}`}
-                  style={{ padding: '6px 12px', fontSize: '12.5px' }}
-                  onClick={() => setAttachTab('file')}
-                >
-                  📁 File Upload (.pdf, .json, .csv, .txt)
-                </button>
-                <button
-                  className={`neu-btn transition-colors ${attachTab === 'narrative' ? 'primary' : 'ghost'}`}
-                  style={{ padding: '6px 12px', fontSize: '12.5px' }}
-                  onClick={() => setAttachTab('narrative')}
-                >
-                  Text Narrative / Addendum
-                </button>
-              </div>
-
-              {attachTab === 'file' && (
-                <form onSubmit={handleAttachFileUpload} className="flex flex-col gap-4">
-                  <div style={{ padding: '24px 16px', border: '2px dashed var(--border)', borderRadius: '8px', textAlign: 'center', background: 'var(--bg1)' }}>
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5" style={{ margin: '0 auto 10px' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                    <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>Select document or data file</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-faint)', marginBottom: '14px' }}>
-                      Will extract entities directly into case <span className="mono">{selectedCase}</span> without creating a new case
-                    </div>
-                    <input
-                      type="file"
-                      accept=".json,.csv,.pdf,.txt,.log"
-                      multiple
-                      onChange={(e) => setAttachFiles(Array.from(e.target.files || []))}
-                      style={{ display: 'inline-block' }}
-                    />
-                    {attachFiles.length > 0 && (
-                      <div style={{ marginTop: '10px', fontSize: '12.5px', color: 'var(--accent)', fontWeight: 600 }}>
-                        Selected {attachFiles.length} file{attachFiles.length > 1 ? 's' : ''}: {attachFiles.map(f => f.name).join(', ')}
-                      </div>
-                    )}
+              <form onSubmit={handleAttachFileUpload} className="flex flex-col gap-4">
+                <div style={{ padding: '24px 16px', border: '2px dashed var(--border)', borderRadius: '8px', textAlign: 'center', background: 'var(--bg1)' }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5" style={{ margin: '0 auto 10px' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                  <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '4px' }}>Upload document or data file (.pdf, .txt, .csv, .json)</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-faint)', marginBottom: '14px' }}>
+                    Will extract entities directly into case <span className="mono">{selectedCase}</span> without creating a new case
                   </div>
-                  <div className="flex justify-end gap-2" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
-                    <button type="button" className="neu-btn ghost" onClick={() => setIsAttachModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="neu-btn primary" disabled={attaching || attachFiles.length === 0}>
-                      {attaching ? 'Uploading & Extracting…' : 'Attach File to Case'}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {attachTab === 'narrative' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: '8px' }}>
-                    Addendum Report / Narrative Text
-                  </label>
-                  <textarea
-                    className="control"
-                    rows={8}
-                    style={{ width: '100%', fontSize: '13px', lineHeight: 1.5 }}
-                    value={attachNarrative}
-                    onChange={(e) => setAttachNarrative(e.target.value)}
-                    placeholder="Paste additional narrative intelligence to append to this case..."
+                  <input
+                    type="file"
+                    accept=".pdf,.txt,.csv,.json"
+                    multiple
+                    onChange={(e) => setAttachFiles(Array.from(e.target.files || []))}
+                    style={{ display: 'inline-block' }}
                   />
-                  <div className="flex justify-end gap-2" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
-                    <button type="button" className="neu-btn ghost" onClick={() => setIsAttachModalOpen(false)}>Cancel</button>
-                    <button className="neu-btn primary" disabled={attaching} onClick={handleAttachNarrativeIngest}>
-                      {attaching ? 'Extracting & Merging…' : 'Attach Narrative to Case'}
-                    </button>
-                  </div>
+                  {attachFiles.length > 0 && (
+                    <div style={{ marginTop: '10px', fontSize: '12.5px', color: 'var(--accent)', fontWeight: 600 }}>
+                      Selected {attachFiles.length} file{attachFiles.length > 1 ? 's' : ''}: {attachFiles.map(f => f.name).join(', ')}
+                    </div>
+                  )}
                 </div>
-              )}
+                <div className="flex justify-end gap-2" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
+                  <button type="button" className="neu-btn ghost" onClick={() => setIsAttachModalOpen(false)}>Cancel</button>
+                  <button type="submit" className="neu-btn primary" disabled={attaching || attachFiles.length === 0}>
+                    {attaching ? 'Uploading & Extracting…' : 'Attach File to Case'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
       )}
-
-      {/* MODAL 3: CASE ALREADY EXISTS ALERT POPUP */}
-      {alreadyExistsModal && (
-        <CaseAlreadyExistsModal
-          caseId={alreadyExistsModal.caseId}
-          caseName={alreadyExistsModal.caseName}
-          status={alreadyExistsModal.status}
-          onClose={() => setAlreadyExistsModal(null)}
-          onViewCase={(cid) => {
-            loadCaseDetail(cid);
-            setIsIngestModalOpen(false);
-          }}
-        />
-      )}
     </div>
   );
 }
+

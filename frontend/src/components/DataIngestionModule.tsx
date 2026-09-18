@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { API, Case } from '../services/api';
-import { CaseAlreadyExistsModal } from './Modals';
 
 export interface DataIngestionModuleProps {
   fetchCases: () => Promise<Case[]>;
@@ -9,90 +8,26 @@ export interface DataIngestionModuleProps {
 }
 
 export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIngestionModuleProps) {
-  const [activeTab, setActiveTab] = useState<'json' | 'file' | 'narrative'>('json');
-  const [jsonText, setJsonText] = useState<string>('');
   const [files, setFiles] = useState<File[]>([]);
-  const [narrativeText, setNarrativeText] = useState<string>('');
   const [ingesting, setIngesting] = useState<boolean>(false);
-  const [alreadyExistsModal, setAlreadyExistsModal] = useState<{ caseId: string; caseName?: string; status?: string } | null>(null);
-
-  const sampleJson = {
-    "case_metadata": {
-      "case_id": "CASE-2026-999",
-      "case_name": "Operation Cyber Vault",
-      "case_type": "CYBER_FRAUD",
-      "priority": "HIGH",
-      "status": "OPEN",
-      "summary": "Extortion ring operating via spoofed banking portals and cryptowallet laundering."
-    },
-    "entities": {
-      "people": [{ "id": "P-999", "name": "Vikram Malhotra", "status": "Suspect", "age": 34 }],
-      "phones": [{ "msisdn": "+919876543210", "owner_id": "P-999", "carrier": "Airtel" }],
-      "bank_accounts": [{ "account_number": "ACC999888", "owner_id": "P-999", "bank_name": "HDFC Bank" }]
-    },
-    "relationships": {
-      "communications": [{ "caller": "+919876543210", "callee": "+919999911111", "duration_seconds": 320, "type": "VOICE_CALL" }]
-    }
-  };
-
-  const handleJsonIngest = async () => {
-    if (!jsonText.trim()) { addToast('Please enter JSON payload', 'info'); return; }
-    
-    let targetCaseId = '';
-    try {
-      const parsedTest = JSON.parse(jsonText);
-      targetCaseId = parsedTest.case_metadata?.case_id || parsedTest.case_id || '';
-    } catch {}
-
-    if (targetCaseId) {
-      const allCases = await fetchCases();
-      const existing = allCases.find(c => c.case_id.toLowerCase() === targetCaseId.toLowerCase());
-      if (existing) {
-        setAlreadyExistsModal({ caseId: existing.case_id, caseName: existing.case_name, status: existing.status });
-        return;
-      }
-    }
-
-    setIngesting(true);
-    try {
-      const parsed = JSON.parse(jsonText);
-      const res = await API.post<{ case_id?: string; created?: { nodes?: number }; case_already_exists?: boolean }>('/api/v1/ingest/case', parsed);
-      if (res.case_already_exists) {
-        setAlreadyExistsModal({ caseId: res.case_id || targetCaseId });
-        await fetchCases();
-        return;
-      }
-      addToast(`Successfully ingested Case '${res.case_id}'! Created ${res.created?.nodes || 0} nodes.`, 'ok');
-      await fetchCases();
-      changeView('cases');
-    } catch (e) {
-      addToast(`Ingestion error: ${(e as Error).message}`, 'err');
-    } finally {
-      setIngesting(false);
-    }
-  };
 
   const handleFileUpload = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!files || files.length === 0) { addToast('Please select a file to upload', 'info'); return; }
+    if (!files || files.length === 0) {
+      addToast('Please select a file to upload (.pdf, .txt, .csv, .json)', 'info');
+      return;
+    }
 
-    // Pre-check for JSON files with existing case_id
-    const allCases = await fetchCases();
-    for (const f of files) {
-      if (f.name.endsWith('.json')) {
-        try {
-          const text = await f.text();
-          const d = JSON.parse(text);
-          const cid = d.case_metadata?.case_id || d.case_id || (d.case_data && d.case_data.case_metadata?.case_id);
-          if (cid) {
-            const match = allCases.find(c => c.case_id.toLowerCase() === cid.toLowerCase() || (c.case_name && c.case_name.toLowerCase() === cid.toLowerCase()));
-            if (match) {
-              setAlreadyExistsModal({ caseId: match.case_id, caseName: match.case_name, status: match.status });
-              return;
-            }
-          }
-        } catch {}
-      }
+    // Validate file extensions
+    const validExtensions = ['.pdf', '.txt', '.csv', '.json'];
+    const invalidFiles = files.filter(f => {
+      const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+      return !validExtensions.includes(ext);
+    });
+
+    if (invalidFiles.length > 0) {
+      addToast(`Only files of format .pdf, .txt, .csv, .json are allowed. Invalid: ${invalidFiles.map(f => f.name).join(', ')}`, 'err');
+      return;
     }
 
     setIngesting(true);
@@ -100,14 +35,8 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
       const formData = new FormData();
       for (const f of files) {
         formData.append('files', f);
-        formData.append('file', f);
       }
-      const res = await API.send<{ case_id?: string; case_already_exists?: boolean }>('/api/v1/ingest', { method: 'POST', body: formData, form: true });
-      if (res.case_already_exists) {
-        setAlreadyExistsModal({ caseId: res.case_id || 'Uploaded Case' });
-        await fetchCases();
-        return;
-      }
+      const res = await API.send<{ case_id?: string }>('/api/v1/ingest', { method: 'POST', body: formData, form: true });
       addToast(`File ingestion complete! Case ID: ${res.case_id}`, 'ok');
       await fetchCases();
       changeView('cases');
@@ -118,95 +47,46 @@ export function DataIngestionModule({ fetchCases, changeView, addToast }: DataIn
     }
   };
 
-  const handleNarrativeIngest = async () => {
-    if (!narrativeText.trim()) { addToast('Please enter intelligence narrative text', 'info'); return; }
-    setIngesting(true);
-    try {
-      const res = await API.send<{ case_id?: string; case_already_exists?: boolean }>('/api/v1/ingest/text', {
-        method: 'POST',
-        body: narrativeText,
-        headers: { 'Content-Type': 'text/plain' }
-      });
-      if (res.case_already_exists) {
-        setAlreadyExistsModal({ caseId: res.case_id || 'Narrative Case' });
-        await fetchCases();
-        return;
-      }
-      addToast(`Narrative intelligence ingested for Case '${res.case_id}'!`, 'ok');
-      await fetchCases();
-      changeView('cases');
-    } catch (e) {
-      addToast(`Extraction failed: ${(e as Error).message}`, 'err');
-    } finally {
-      setIngesting(false);
-    }
-  };
-
   return (
     <div>
       <div className="card">
-        <div className="card-header">
-          <div className="card-title font-semibold text-base">Unified Multi-Source Data Ingestion Engine</div>
-        </div>
-        <div className="flex gap-2 border-b mb-5 pb-2.5" style={{display:'flex', gap:'8px', borderBottom:'1px solid var(--border)', marginBottom:'20px', paddingBottom:'10px'}}>
-          <button className={`neu-btn transition-colors ${activeTab === 'json' ? 'primary' : 'ghost'}`} onClick={() => setActiveTab('json')}>Structured JSON Payload</button>
-          <button className={`neu-btn transition-colors ${activeTab === 'file' ? 'primary' : 'ghost'}`} onClick={() => setActiveTab('file')}>Upload File (JSON / CSV / PDF)</button>
-          <button className={`neu-btn transition-colors ${activeTab === 'narrative' ? 'primary' : 'ghost'}`} onClick={() => setActiveTab('narrative')}>Unstructured Text Narrative</button>
+        <div className="card-header" style={{ marginBottom: '20px' }}>
+          <div className="card-title font-semibold text-base">Multi-Source Data Ingestion Engine</div>
         </div>
 
-        {activeTab === 'json' && (
-          <div>
-            <div className="flex justify-between items-center mb-2.5" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px'}}>
-              <label className="field font-bold text-xs uppercase" style={{textTransform:'uppercase', fontSize:'11.5px', fontWeight:700, color:'var(--text-dim)'}}>JSON Case Payload</label>
-              <button className="neu-btn ghost transition-colors" style={{padding:'4px 8px', fontSize:'11.5px'}} onClick={() => setJsonText(JSON.stringify(sampleJson, null, 2))}>Load Sample JSON Template</button>
+        <form onSubmit={handleFileUpload} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 items-center justify-center" style={{ padding: '40px 24px', border: '2px dashed var(--border)', borderRadius: 'var(--radius-sm)', textAlign: 'center', marginBottom: '20px', background: 'var(--bg1)' }}>
+            <div style={{ display: 'inline-flex', gap: '8px', marginBottom: '12px', alignItems: 'center' }}>
+              <button type="button" className="neu-btn primary transition-colors" style={{ cursor: 'default', fontWeight: 600, padding: '10px 18px' }}>
+                📂 Upload Document (.pdf, .json, .csv, .txt)
+              </button>
             </div>
-            <textarea className="control mono w-full text-xs leading-relaxed" rows={16} style={{width:'100%', fontSize:'12.5px', lineHeight:1.5}} value={jsonText} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setJsonText(e.target.value)} placeholder="Paste Case JSON structure here..."></textarea>
-            <div className="flex justify-end mt-4" style={{marginTop:'16px', display:'flex', justifyContent:'flex-end'}}>
-              <button className="neu-btn primary transition-colors" disabled={ingesting} onClick={handleJsonIngest}>{ingesting ? 'Ingesting into Graph…' : 'Commit to Neo4j Knowledge Graph'}</button>
+            <div className="font-bold text-base" style={{ fontWeight: 700, fontSize: '16px', marginBottom: '6px' }}>
+              Select or drag & drop case files
             </div>
+            <div className="text-xs mb-4 text-slate-400" style={{ fontSize: '13px', color: 'var(--text-faint)', marginBottom: '18px', maxWidth: '640px', lineHeight: 1.5 }}>
+              Only files of format <strong>.pdf</strong>, <strong>.txt</strong>, <strong>.csv</strong>, and <strong>.json</strong> are allowed. Uploaded files will be automatically parsed and converted to the exact standardized Case JSON format without hallucination or unnecessary repetition of data.
+            </div>
+            <input
+              type="file"
+              accept=".pdf,.txt,.csv,.json"
+              multiple
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiles(Array.from(e.target.files || []))}
+              style={{ display: 'inline-block' }}
+            />
+            {files.length > 0 && (
+              <div className="mt-3 text-sm font-semibold text-atlas-cyan" style={{ marginTop: '14px', fontSize: '13.5px', color: 'var(--accent)', fontWeight: 600 }}>
+                Selected {files.length} file{files.length > 1 ? 's' : ''}: {files.map(f => f.name).join(', ')}
+              </div>
+            )}
           </div>
-        )}
-
-        {activeTab === 'file' && (
-          <form onSubmit={handleFileUpload} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-4 items-center justify-center" style={{padding:'36px 20px', border:'2px dashed var(--border)', borderRadius:'var(--radius-sm)', textAlign:'center', marginBottom:'20px', background:'var(--bg1)'}}>
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5" style={{marginBottom:'10px'}}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-              <div className="font-bold text-sm" style={{fontWeight:700, fontSize:'15px', marginBottom:'4px'}}>Select or drag & drop files</div>
-              <div className="text-xs mb-4 text-slate-400" style={{fontSize:'12.5px', color:'var(--text-faint)', marginBottom:'16px'}}>Supports structured `.json` case dossiers, `.pdf` FIR reports & complaints, CDR `.csv` phone records, bank statements</div>
-              <input type="file" accept=".json,.csv,.pdf,.txt,.log" multiple onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFiles(Array.from(e.target.files || []))} style={{display:'inline-block'}} />
-              {files.length > 0 && (
-                <div className="mt-3 text-sm font-semibold text-atlas-cyan" style={{marginTop:'12px', fontSize:'13px', color:'var(--accent)', fontWeight:600}}>
-                  Selected {files.length} file{files.length > 1 ? 's' : ''}: {files.map(f => f.name).join(', ')}
-                </div>
-              )}
-            </div>
-            <div className="flex justify-end" style={{display:'flex', justifyContent:'flex-end'}}>
-              <button type="submit" className="neu-btn primary transition-colors" disabled={ingesting || files.length === 0}>{ingesting ? 'Uploading & Extracting…' : 'Process & Upload File'}</button>
-            </div>
-          </form>
-        )}
-
-        {activeTab === 'narrative' && (
-          <div>
-            <label className="field font-bold text-xs uppercase mb-2.5 block" style={{textTransform:'uppercase', fontSize:'11.5px', fontWeight:700, color:'var(--text-dim)', marginBottom:'10px'}}>Raw Police Complaint / Informant Report Narrative</label>
-            <textarea className="control w-full text-sm leading-relaxed" rows={12} style={{width:'100%', fontSize:'13.5px', lineHeight:1.6}} value={narrativeText} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNarrativeText(e.target.value)} placeholder="Paste operational narrative (e.g. 'FIR lodged at Crime Branch Delhi by Complainant Smt. Sunita Devi against Suspect Rajesh Kumar regarding extortion call received from +919811122233...')..."></textarea>
-            <div className="flex justify-end mt-4" style={{marginTop:'16px', display:'flex', justifyContent:'flex-end'}}>
-              <button className="neu-btn primary transition-colors" disabled={ingesting} onClick={handleNarrativeIngest}>{ingesting ? 'Running LLM Extraction Engine…' : 'Extract Graph Entities via AI Engine'}</button>
-            </div>
+          <div className="flex justify-end" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="submit" className="neu-btn primary transition-colors" disabled={ingesting || files.length === 0}>
+              {ingesting ? 'Uploading & Extracting…' : 'Process & Upload File'}
+            </button>
           </div>
-        )}
+        </form>
       </div>
-
-      {/* Case Already Uploaded Alert Popup */}
-      {alreadyExistsModal && (
-        <CaseAlreadyExistsModal
-          caseId={alreadyExistsModal.caseId}
-          caseName={alreadyExistsModal.caseName}
-          status={alreadyExistsModal.status}
-          onClose={() => setAlreadyExistsModal(null)}
-          onViewCase={() => changeView('cases')}
-        />
-      )}
     </div>
   );
 }

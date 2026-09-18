@@ -99,9 +99,9 @@ def test_payload_validated_against_the_typed_model():
     # Person requires name
     with pytest.raises(ValidationError):
         EventBatch(case_id="C", events=[{"event_type": "PERSON_UPSERT", "payload": {"person_id": "P1"}}])
-    # Transaction requires amount/timestamp
+    # Transaction requires target_account
     with pytest.raises(ValidationError):
-        EventBatch(case_id="C", events=[{"event_type": "TRANSACTION", "payload": {"transaction_id": "T", "source_account": "A", "target_account": "B"}}])
+        EventBatch(case_id="C", events=[{"event_type": "TRANSACTION", "payload": {"transaction_id": "T", "source_account": "A"}}])
     # Wrong payload shape for the declared type
     with pytest.raises(ValidationError):
         EventBatch(case_id="C", events=[{"event_type": "COMMUNICATION", "payload": {"person_id": "P1", "name": "X"}}])

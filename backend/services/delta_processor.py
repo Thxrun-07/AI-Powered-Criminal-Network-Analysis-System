@@ -199,8 +199,11 @@ class DeltaProcessor:
         batch_step("SOCIAL_HANDLES_MERGE", social_rows, common, True, 1)
         batch_step("SOCIAL_HAS_HANDLE", gw.social_has_handle_rows(social_rows), {}, False, 1)
 
-        # 9. IP addresses (node + Case INVOLVES only -- no LINKED_TO_IP anywhere)
-        batch_step("IP_ADDRESSES_MERGE", [gw.ip_address_row(x) for x in by_type[EventType.IP_ADDRESS_UPSERT]], common, True, 1)
+        # 9. IP addresses (node + Case INVOLVES + USES_IP)
+        ip_rows = [gw.ip_address_row(x) for x in by_type[EventType.IP_ADDRESS_UPSERT]]
+        batch_step("IP_ADDRESSES_MERGE", ip_rows, common, True, 1)
+        batch_step("PERSON_USES_IP", gw.person_uses_ip_rows(ip_rows), {}, False, 1)
+        batch_step("SOCIAL_USES_IP", gw.social_uses_ip_rows(social_rows), {}, False, 1)
 
         # 10. Locations, cell towers (+ tower LOCATED_AT)
         batch_step("LOCATIONS_MERGE", [gw.location_row(x) for x in by_type[EventType.LOCATION_UPSERT]], common, True, 1)
@@ -214,16 +217,18 @@ class DeltaProcessor:
         # 12. Transactions -> TRANSFERRED_TO + Transaction node
         batch_step("TRANSACTIONS_MERGE", [gw.transaction_row(x) for x in by_type[EventType.TRANSACTION]], common, True, 2)
 
-        # 13. Surveillance -> Location, Person LOCATED_AT, Vehicle LOCATED_AT
+        # 13. Surveillance -> Location, Person LOCATED_AT, Vehicle LOCATED_AT, Phone LOCATED_AT
         logs = by_type[EventType.SURVEILLANCE_LOG]
-        surv_loc, surv_p, surv_v = [], [], []
+        surv_loc, surv_p, surv_v, surv_ph = [], [], [], []
         for lg in logs:
             surv_loc.append(gw.surveillance_location_row(lg))
             surv_p.extend(gw.surveillance_person_rows(lg))
             surv_v.extend(gw.surveillance_vehicle_rows(lg))
+            surv_ph.extend(gw.surveillance_phone_rows(lg))
         batch_step("SURVEILLANCE_LOCATIONS_MERGE", surv_loc, common, False, 0)
         batch_step("SURVEILLANCE_PERSON_LOCATED_AT", surv_p, {"case_id": case_id}, False, 1)
         batch_step("SURVEILLANCE_VEHICLE_LOCATED_AT", surv_v, {"case_id": case_id}, False, 1)
+        batch_step("SURVEILLANCE_PHONE_LOCATED_AT", surv_ph, {"case_id": case_id}, False, 1)
 
         # 14. Criminal history -> PriorCase + HAS_PRIOR_CASE
         batch_step("PRIOR_CASES_MERGE", [gw.criminal_history_row(x) for x in by_type[EventType.CRIMINAL_HISTORY]], common, True, 2)

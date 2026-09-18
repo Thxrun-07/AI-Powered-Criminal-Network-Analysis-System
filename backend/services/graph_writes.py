@@ -217,17 +217,31 @@ def fir_accused_params(fir: FIR) -> List[Dict[str, Any]]:
 PEOPLE_MERGE = """
         UNWIND $rows AS row
         MERGE (p:Person {person_id: row.person_id})
-        ON CREATE SET p.name=row.name, p.aliases=row.aliases, p.dob=row.dob,
+        ON CREATE SET p += row.properties, p.name=row.name, p.aliases=row.aliases, p.age=row.age,
+            p.gender=row.gender, p.address=row.address, p.occupation=row.occupation,
+            p.phone_numbers=row.phone_numbers, p.dob=row.dob,
             p.national_id=row.national_id, p.roles=row.roles, p.risk_level=row.risk_level,
             p.notes=row.notes, p.created_at=$now, p.updated_at=$now,
             p.case_ids=[$case_id], p.source_record_ids=row.source_record_ids
-        ON MATCH SET p.name=coalesce(row.name,p.name), p.dob=coalesce(row.dob,p.dob),
-            p.national_id=coalesce(row.national_id,p.national_id),
-            p.risk_level=coalesce(row.risk_level,p.risk_level), p.updated_at=$now,
+        ON MATCH SET p += row.properties,
+            p.name=coalesce(p.name, row.name),
+            p.age=coalesce(p.age, row.age),
+            p.gender=coalesce(p.gender, row.gender),
+            p.address=coalesce(p.address, row.address),
+            p.occupation=coalesce(p.occupation, row.occupation),
+            p.dob=coalesce(p.dob, row.dob),
+            p.national_id=coalesce(p.national_id, row.national_id),
+            p.risk_level=coalesce(p.risk_level, row.risk_level),
+            p.notes=coalesce(p.notes, row.notes),
+            p.updated_at=$now,
             p.case_ids=CASE WHEN $case_id IN p.case_ids THEN p.case_ids ELSE p.case_ids + $case_id END,
-            p.aliases=reduce(acc=[], x IN (coalesce(p.aliases,[]) + coalesce(row.aliases,[])) |
+            p.aliases=reduce(acc=[], x IN (coalesce(p.aliases,[]) + coalesce(row.aliases,[]) + [CASE WHEN row.name IS NOT NULL AND row.name <> p.name THEN row.name ELSE NULL END]) |
                 CASE WHEN x IS NULL OR x IN acc THEN acc ELSE acc + x END),
             p.roles=reduce(acc=[], x IN (coalesce(p.roles,[]) + coalesce(row.roles,[])) |
+                CASE WHEN x IS NULL OR x IN acc THEN acc ELSE acc + x END),
+            p.phone_numbers=reduce(acc=[], x IN (coalesce(p.phone_numbers,[]) + coalesce(row.phone_numbers,[])) |
+                CASE WHEN x IS NULL OR x IN acc THEN acc ELSE acc + x END),
+            p.source_record_ids=reduce(acc=[], x IN (coalesce(p.source_record_ids,[]) + coalesce(row.source_record_ids,[])) |
                 CASE WHEN x IS NULL OR x IN acc THEN acc ELSE acc + x END)
         WITH p
         MATCH (c:Case {case_id:$case_id})
@@ -236,13 +250,33 @@ PEOPLE_MERGE = """
         """
 
 
+PROTECTED_PERSON_FIELDS = {
+    "person_id", "name", "aliases", "age", "gender", "address", "occupation",
+    "phone_numbers", "dob", "national_id", "roles", "risk_level", "notes",
+    "case_ids", "source_record_ids", "created_at", "updated_at"
+}
+
+
 def person_row(x: Person) -> Dict[str, Any]:
+    safe_props = {k: v for k, v in (x.properties or {}).items() if k not in PROTECTED_PERSON_FIELDS}
     return {
-        "person_id": x.person_id, "name": x.name, "aliases": x.aliases,
-        "dob": x.dob, "national_id": x.national_id, "roles": x.roles,
-        "risk_level": x.risk_level, "notes": x.notes,
-        "source_record_ids": x.source_record_ids
+        "person_id": x.person_id,
+        "name": x.name,
+        "aliases": x.aliases,
+        "age": x.age,
+        "gender": x.gender,
+        "address": x.address,
+        "occupation": x.occupation,
+        "phone_numbers": x.phone_numbers,
+        "dob": x.dob,
+        "national_id": x.national_id,
+        "roles": x.roles,
+        "risk_level": x.risk_level,
+        "notes": x.notes,
+        "source_record_ids": x.source_record_ids,
+        "properties": safe_props
     }
+
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +357,7 @@ SOCIAL_HAS_HANDLE = """UNWIND $rows AS row MATCH (p:Person {person_id:row.owner_
 
 
 def social_handle_row(x: SocialHandle) -> Dict[str, Any]:
-    return {"handle_id":x.handle_id,"platform":x.platform,"handle":x.handle,"associated_email":x.associated_email,"display_name":x.display_name,"owner_person_id":x.owner_person_id}
+    return {"handle_id":x.handle_id,"platform":x.platform,"handle":x.handle,"associated_email":x.associated_email,"display_name":x.display_name,"owner_person_id":x.owner_person_id,"linked_ip":getattr(x, "linked_ip", None)}
 
 
 def social_has_handle_rows(social_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -331,14 +365,26 @@ def social_has_handle_rows(social_rows: List[Dict[str, Any]]) -> List[Dict[str, 
 
 
 # ---------------------------------------------------------------------------
-# 9. IP addresses  (NOTE: no LINKED_TO_IP relationship is written anywhere)
+# 9. IP addresses (+ USES_IP)
 # ---------------------------------------------------------------------------
 
 IP_ADDRESSES_MERGE = """UNWIND $rows AS row MERGE (i:IPAddress {ip_address:row.ip_address}) ON CREATE SET i.ip_type=row.ip_type,i.asn=row.asn,i.isp=row.isp,i.created_at=$now,i.updated_at=$now,i.case_ids=[$case_id] ON MATCH SET i.updated_at=$now,i.case_ids=CASE WHEN $case_id IN i.case_ids THEN i.case_ids ELSE i.case_ids+$case_id END WITH i MATCH (c:Case {case_id:$case_id}) MERGE (c)-[:INVOLVES]->(i) RETURN (i.created_at=$now) AS was_created"""
 
+PERSON_USES_IP = """UNWIND $rows AS row MATCH (p:Person {person_id:row.owner_id}), (i:IPAddress {ip_address:row.ip_address}) MERGE (p)-[:USES_IP]->(i)"""
+
+SOCIAL_USES_IP = """UNWIND $rows AS row MATCH (s:SocialHandle {handle_id:row.handle_id}), (i:IPAddress {ip_address:row.linked_ip}) MERGE (s)-[:USES_IP]->(i)"""
+
 
 def ip_address_row(x: IPAddress) -> Dict[str, Any]:
-    return {"ip_address":x.ip_address,"ip_type":x.ip_type,"asn":x.asn,"isp":x.isp}
+    return {"ip_address":x.ip_address,"ip_type":x.ip_type,"asn":x.asn,"isp":x.isp,"owner_person_id":getattr(x, "owner_person_id", None)}
+
+
+def person_uses_ip_rows(ip_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [{"owner_id":x["owner_person_id"],"ip_address":x["ip_address"]} for x in ip_rows if x.get("owner_person_id")]
+
+
+def social_uses_ip_rows(social_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [{"handle_id":x["handle_id"],"linked_ip":x["linked_ip"]} for x in social_rows if x.get("linked_ip")]
 
 
 # ---------------------------------------------------------------------------
@@ -372,8 +418,10 @@ CALLED_MERGE = """
             UNWIND $rows AS row
             MERGE (p1:Phone {phone_number: row.src_phone})
             ON CREATE SET p1.created_at = $now, p1.updated_at = $now, p1.case_ids = [$case_id]
+            ON MATCH SET p1.updated_at = $now, p1.case_ids = CASE WHEN $case_id IN p1.case_ids THEN p1.case_ids ELSE p1.case_ids + $case_id END
             MERGE (p2:Phone {phone_number: row.dst_phone})
             ON CREATE SET p2.created_at = $now, p2.updated_at = $now, p2.case_ids = [$case_id]
+            ON MATCH SET p2.updated_at = $now, p2.case_ids = CASE WHEN $case_id IN p2.case_ids THEN p2.case_ids ELSE p2.case_ids + $case_id END
             MERGE (p1)-[r:CALLED {call_id: row.call_id}]->(p2)
             ON CREATE SET
                 r.timestamp = row.timestamp,
@@ -411,8 +459,10 @@ TRANSACTIONS_MERGE = """
             UNWIND $rows AS row
             MERGE (b1:BankAccount {account_number: row.src_acc})
             ON CREATE SET b1.created_at = $now, b1.updated_at = $now, b1.case_ids = [$case_id]
+            ON MATCH SET b1.updated_at = $now, b1.case_ids = CASE WHEN $case_id IN b1.case_ids THEN b1.case_ids ELSE b1.case_ids + $case_id END
             MERGE (b2:BankAccount {account_number: row.dst_acc})
             ON CREATE SET b2.created_at = $now, b2.updated_at = $now, b2.case_ids = [$case_id]
+            ON MATCH SET b2.updated_at = $now, b2.case_ids = CASE WHEN $case_id IN b2.case_ids THEN b2.case_ids ELSE b2.case_ids + $case_id END
 
             MERGE (t:Transaction {transaction_id: row.tx_id})
             ON CREATE SET
@@ -421,6 +471,7 @@ TRANSACTIONS_MERGE = """
                 t.timestamp = row.timestamp,
                 t.transaction_type = row.tx_type,
                 t.reference_no = row.reference_no,
+                t.description = row.description,
                 t.source_record_id = row.source_record_id,
                 t.created_at = $now,
                 t.case_ids = [$case_id]
@@ -432,6 +483,7 @@ TRANSACTIONS_MERGE = """
                 r.timestamp = row.timestamp,
                 r.transaction_type = row.tx_type,
                 r.reference_no = row.reference_no,
+                r.description = row.description,
                 r.source_record_id = row.source_record_id,
                 r.case_id = $case_id
 
@@ -443,6 +495,7 @@ TRANSACTIONS_MERGE = """
 
 
 def transaction_row(tx: TransactionRecord) -> Dict[str, Any]:
+    desc = tx.description or (tx.properties.get("description") if tx.properties else None)
     return {
         "src_acc": tx.source_account,
         "dst_acc": tx.target_account,
@@ -452,15 +505,13 @@ def transaction_row(tx: TransactionRecord) -> Dict[str, Any]:
         "timestamp": tx.timestamp,
         "tx_type": tx.transaction_type,
         "reference_no": tx.reference_no,
+        "description": desc,
         "source_record_id": tx.source_record_id
     }
 
 
 # ---------------------------------------------------------------------------
-# 13. Surveillance logs -> Location + (Person|Vehicle)-[:LOCATED_AT]->(Location)   [batched in Step 1B]
-#
-# NOTE: only observed_person_ids and observed_vehicle_vins are persisted (as before);
-# observed_phone_numbers is not written by the current code and is therefore not batched.
+# 13. Surveillance logs -> Location + (Person|Vehicle|Phone)-[:LOCATED_AT]->(Location)   [batched in Step 1B]
 # ---------------------------------------------------------------------------
 
 SURVEILLANCE_LOCATIONS_MERGE = """
@@ -490,6 +541,16 @@ SURVEILLANCE_VEHICLE_LOCATED_AT = """
                 UNWIND $rows AS row
                 MATCH (v:Vehicle {vin: row.vin}), (l:Location {location_id: row.loc_id})
                 MERGE (v)-[r:LOCATED_AT {log_id: row.log_id}]->(l)
+                ON CREATE SET
+                    r.timestamp = row.timestamp,
+                    r.activity_description = row.activity,
+                    r.case_id = $case_id
+                """
+
+SURVEILLANCE_PHONE_LOCATED_AT = """
+                UNWIND $rows AS row
+                MATCH (ph:Phone {phone_number: row.phone_number}), (l:Location {location_id: row.loc_id})
+                MERGE (ph)-[r:LOCATED_AT {log_id: row.log_id}]->(l)
                 ON CREATE SET
                     r.timestamp = row.timestamp,
                     r.activity_description = row.activity,
@@ -533,6 +594,17 @@ def surveillance_vehicle_rows(s_log: SurveillanceLogRecord) -> List[Dict[str, An
         "timestamp": s_log.timestamp,
         "activity": s_log.activity_description
     } for vin in s_log.observed_vehicle_vins]
+
+
+def surveillance_phone_rows(s_log: SurveillanceLogRecord) -> List[Dict[str, Any]]:
+    loc_id = surveillance_location_id(s_log)
+    return [{
+        "phone_number": pnum,
+        "loc_id": loc_id,
+        "log_id": s_log.log_id,
+        "timestamp": s_log.timestamp,
+        "activity": s_log.activity_description
+    } for pnum in getattr(s_log, 'observed_phone_numbers', []) or []]
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +698,9 @@ BATCHED_RELATIONSHIP_STATEMENTS: Dict[str, str] = {
     "SURVEILLANCE_LOCATIONS_MERGE": SURVEILLANCE_LOCATIONS_MERGE,
     "SURVEILLANCE_PERSON_LOCATED_AT": SURVEILLANCE_PERSON_LOCATED_AT,
     "SURVEILLANCE_VEHICLE_LOCATED_AT": SURVEILLANCE_VEHICLE_LOCATED_AT,
+    "SURVEILLANCE_PHONE_LOCATED_AT": SURVEILLANCE_PHONE_LOCATED_AT,
+    "PERSON_USES_IP": PERSON_USES_IP,
+    "SOCIAL_USES_IP": SOCIAL_USES_IP,
     "PRIOR_CASES_MERGE": PRIOR_CASES_MERGE,
     "INTEL_REPORTS_MERGE": INTEL_REPORTS_MERGE,
 }

@@ -1,17 +1,17 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
 class CaseMetadata(BaseModel):
-    case_id: Optional[str] = Field(default="CASE_001", description="Unique case identifier")
+    case_id: Optional[str] = Field(default=None, description="Unique case identifier")
     case_name: Optional[str] = Field(default=None, description="Case title or designation")
     case_title: Optional[str] = Field(default=None, description="Alternative case title field")
     title: Optional[str] = Field(default=None, description="Title of the case")
     fir_number: Optional[str] = Field(default=None, description="FIR Number e.g. FIR/0045/2026")
-    department: Optional[str] = Field(default="Delhi Police / Law Enforcement", description="Department/PS")
+    department: Optional[str] = Field(default=None, description="Department/PS")
     reporting_date: Optional[str] = Field(default=None, description="Reporting date YYYY-MM-DD")
-    crime_type: Optional[str] = Field(default="Kidnapping for Ransom / Organized Crime", description="Primary Crime Category")
-    assigned_officer: Optional[str] = Field(default="Sub-Inspector Manoj Dwivedi", description="Assigned Investigating Officer")
+    crime_type: Optional[str] = Field(default=None, description="Primary Crime Category")
+    assigned_officer: Optional[str] = Field(default=None, description="Assigned Investigating Officer")
 
 
 class PersonEntity(BaseModel):
@@ -19,6 +19,17 @@ class PersonEntity(BaseModel):
     name: str = Field(description="Full name of person")
     status: str = Field(default="Suspect", description="Status e.g. Suspect, Victim, Complainant, Intermediary")
     age: Optional[int] = Field(default=None, description="Age if available")
+    gender: Optional[str] = Field(default=None, description="Gender")
+    address: Optional[str] = Field(default=None, description="Address")
+    occupation: Optional[str] = Field(default=None, description="Occupation")
+    aliases: List[str] = Field(default_factory=list, description="Known aliases")
+    roles: List[str] = Field(default_factory=list, description="Roles")
+    phone_numbers: List[str] = Field(default_factory=list, description="Phone numbers")
+    dob: Optional[str] = Field(default=None, description="Date of birth")
+    national_id: Optional[str] = Field(default=None, description="National ID")
+    risk_level: Optional[str] = Field(default=None, description="Risk level")
+    notes: Optional[str] = Field(default=None, description="Notes")
+    properties: Dict[str, Any] = Field(default_factory=dict, description="Arbitrary custom properties")
 
 
 class PhoneEntity(BaseModel):
@@ -57,7 +68,7 @@ class Entities(BaseModel):
 class CommunicationRelationship(BaseModel):
     caller: str = Field(description="Caller MSISDN")
     recipient: str = Field(description="Recipient MSISDN")
-    timestamp: str = Field(description="Call timestamp YYYY-MM-DD HH:MM:SS")
+    timestamp: Optional[str] = Field(default=None, description="Call timestamp YYYY-MM-DD HH:MM:SS")
     duration_sec: int = Field(default=0, description="Duration of call in seconds")
     cell_tower: Optional[str] = Field(default=None, description="Cell tower ID")
 
@@ -65,9 +76,10 @@ class CommunicationRelationship(BaseModel):
 class TransactionRelationship(BaseModel):
     sender: str = Field(description="Sender account number")
     receiver: str = Field(description="Receiver account number")
-    amount_inr: float = Field(description="Transaction amount in INR")
-    timestamp: str = Field(description="Transaction timestamp YYYY-MM-DD HH:MM:SS")
+    amount_inr: float = Field(default=0.0, description="Transaction amount in INR")
+    timestamp: Optional[str] = Field(default=None, description="Transaction timestamp YYYY-MM-DD HH:MM:SS")
     txn_id: str = Field(description="Unique transaction ID")
+    description: Optional[str] = Field(default=None, description="Transaction description or notes")
 
 
 class Relationships(BaseModel):
@@ -76,9 +88,21 @@ class Relationships(BaseModel):
 
 
 class SurveillanceLog(BaseModel):
-    timestamp: str = Field(description="Timestamp of observation")
-    location: str = Field(description="Location of observation")
-    observation: str = Field(description="Details of observation")
+    log_id: Optional[str] = Field(default=None, description="Surveillance log ID")
+    timestamp: Optional[str] = Field(default=None, description="Timestamp of observation")
+    location_id: Optional[str] = Field(default=None, description="Location ID")
+    location: Optional[str] = Field(default=None, description="Location of observation")
+    location_name: Optional[str] = Field(default=None, description="Location name")
+    latitude: Optional[float] = Field(default=None, description="GPS Latitude")
+    longitude: Optional[float] = Field(default=None, description="GPS Longitude")
+    observation: Optional[str] = Field(default=None, description="Details of observation")
+    activity_description: Optional[str] = Field(default=None, description="Activity description")
+    observed_person_ids: List[str] = Field(default_factory=list, description="Person IDs observed")
+    observed_vehicle_vins: List[str] = Field(default_factory=list, description="Vehicle VINs or plates observed")
+    observed_phone_numbers: List[str] = Field(default_factory=list, description="Phone numbers observed")
+    evidence_ref: Optional[str] = Field(default=None, description="Evidence reference")
+    source_record_id: Optional[str] = Field(default=None, description="Source record ID")
+
 
 
 class CriminalHistory(BaseModel):
@@ -100,4 +124,3 @@ class ConsolidatedCaseData(BaseModel):
     surveillance_logs: List[SurveillanceLog] = Field(default_factory=list)
     criminal_history: List[CriminalHistory] = Field(default_factory=list)
     intelligence_reports: List[IntelligenceReport] = Field(default_factory=list)
-

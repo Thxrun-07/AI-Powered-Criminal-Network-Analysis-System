@@ -19,13 +19,49 @@ class IngestionService:
     """
 
     @staticmethod
-    def _run_batch(session: Session, cypher: str, rows: List[Dict[str, Any]], common: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Execute one parameterized UNWIND batch and return its rows.
+    def _run_batch(runner: Any, cypher: str, rows: List[Dict[str, Any]], common: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Execute one parameterized UNWIND batch and return its rows."""
+        return gw.run_batch(runner, cypher, rows, common)
 
-        Thin wrapper kept for backward compatibility; delegates to
-        ``graph_writes.run_batch`` (no query is issued for an empty row list).
-        """
-        return gw.run_batch(session, cypher, rows, common)
+    @classmethod
+    def _validate_case_data(cls, case_data: CaseData) -> List[str]:
+        warnings: List[str] = []
+        if not case_data.case_metadata or not case_data.case_metadata.case_id:
+            raise ValueError("Invalid CaseData: missing required case_metadata.case_id.")
+
+        seen_people = set()
+        for idx, p in enumerate(case_data.entities.people):
+            if not p.person_id:
+                warnings.append(f"Person at index {idx} has missing person_id.")
+            elif p.person_id in seen_people:
+                warnings.append(f"Duplicate person_id '{p.person_id}' found in ingestion payload.")
+            else:
+                seen_people.add(p.person_id)
+
+            if not p.name or not p.name.strip():
+                warnings.append(f"Person '{p.person_id}' has an empty name.")
+
+        for ph in case_data.entities.phones:
+            if not ph.phone_number:
+                warnings.append("Phone entity with missing phone_number encountered.")
+
+        for acc in case_data.entities.bank_accounts:
+            if not acc.account_number:
+                warnings.append("BankAccount entity with missing account_number encountered.")
+
+        for veh in case_data.entities.vehicles:
+            if not veh.vin and not veh.license_plate:
+                warnings.append("Vehicle entity with missing VIN/license plate encountered.")
+
+        for comm in case_data.relationships.communications:
+            if not comm.source_phone or not comm.target_phone:
+                warnings.append("Communication record with missing source or target phone encountered.")
+
+        for tx in case_data.relationships.transactions:
+            if not tx.source_account or not tx.target_account:
+                warnings.append(f"Transaction '{tx.transaction_id}' has missing source or target account.")
+
+        return warnings
 
     @classmethod
     def ingest_case(
@@ -40,15 +76,14 @@ class IngestionService:
         case_meta = case_data.case_metadata
         case_id = case_meta.case_id
         now = get_current_iso_time()
-        warnings: List[str] = []
+
+        # Step 0: Pre-ingestion validation
+        warnings: List[str] = cls._validate_case_data(case_data)
 
         logger.info(f"Starting case ingestion: case_id='{case_id}', mode='{mode}', dataset_id='{dataset_id}'")
 
-        # Handle replace mode
-        if mode.lower() == "replace":
-            if not confirm_replace:
-                raise ValueError("Replace mode requires 'confirm_replace: true' safety parameter.")
-            cls._execute_replace_cleanup(session, case_id)
+        if mode.lower() == "replace" and not confirm_replace:
+            raise ValueError("Replace mode requires 'confirm_replace: true' safety parameter.")
 
         # Counter trackers
         nodes_created = 0
@@ -56,143 +91,149 @@ class IngestionService:
         rel_created = 0
         source_records_created = 0
 
-        # 1. Merge Case Node
-        res_case = session.run(gw.CASE_MERGE, {**gw.case_params(case_meta), "now": now}).single()
-        case_already_exists = not bool(res_case and res_case.get("was_created"))
-        if not case_already_exists:
-            nodes_created += 1
-        else:
-            nodes_matched += 1
+        # Execute replace and all writes inside a single atomic transaction context
+        with session.begin_transaction() as tx:
+            if mode.lower() == "replace":
+                cls._execute_replace_cleanup(tx, case_id)
 
-        # 2. Ingest SourceRecords
-        source_rows = [gw.source_record_row(sr) for sr in case_data.source_records]
-        sr_rows = cls._run_batch(session, gw.SOURCE_RECORDS_MERGE, source_rows, {"case_id": case_id, "now": now})
-        source_records_created += len(source_rows)
-        nodes_created += sum(1 for r in sr_rows if r.get("was_created"))
-        nodes_matched += len(sr_rows) - sum(1 for r in sr_rows if r.get("was_created"))
-        rel_created += len(source_rows)
-
-        # 3. Ingest FIR Records
-        # FIR -> accused Person links are collected here and written in step 4b,
-        # after the Person batch, so the MATCH on Person succeeds on first ingestion.
-        fir_accused_links: List[Dict[str, Any]] = []
-        for fir in case_data.fir_records:
-            res_fir = session.run(gw.FIR_MERGE, {**gw.fir_params(fir), "case_id": case_id, "now": now}).single()
-            if res_fir and res_fir["was_created"]:
+            # 1. Merge Case Node
+            res_case = tx.run(gw.CASE_MERGE, {**gw.case_params(case_meta), "now": now}).single()
+            if res_case and res_case["was_created"]:
                 nodes_created += 1
             else:
                 nodes_matched += 1
-            rel_created += 2
 
-            # Accused links are deferred until People exist (see step 4b)
-            fir_accused_links.extend(gw.fir_accused_params(fir))
+            # 2. Ingest SourceRecords
+            source_rows = [gw.source_record_row(sr) for sr in case_data.source_records]
+            sr_rows = cls._run_batch(tx, gw.SOURCE_RECORDS_MERGE, source_rows, {"case_id": case_id, "now": now})
+            source_records_created += len(source_rows)
+            nodes_created += sum(1 for r in sr_rows if r.get("was_created"))
+            nodes_matched += len(sr_rows) - sum(1 for r in sr_rows if r.get("was_created"))
+            rel_created += len(source_rows)
 
-        # 4. Ingest People
-        people_rows = [gw.person_row(x) for x in case_data.entities.people]
-        people_results = cls._run_batch(session, gw.PEOPLE_MERGE, people_rows, {"case_id": case_id, "now": now})
-        created = sum(1 for r in people_results if r.get("was_created"))
-        nodes_created += created; nodes_matched += len(people_results)-created; rel_created += len(people_rows)
+            # 3. Ingest FIR Records
+            fir_accused_links: List[Dict[str, Any]] = []
+            for fir in case_data.fir_records:
+                res_fir = tx.run(gw.FIR_MERGE, {**gw.fir_params(fir), "case_id": case_id, "now": now}).single()
+                if res_fir and res_fir["was_created"]:
+                    nodes_created += 1
+                else:
+                    nodes_matched += 1
+                rel_created += 2
+                fir_accused_links.extend(gw.fir_accused_params(fir))
 
-        # 4b. FIR -> accused Person links (deferred from step 3 so Person nodes exist)
-        for acc_params in fir_accused_links:
-            session.run(gw.FIR_ACCUSED_INVOLVES, acc_params)
-            rel_created += 1
+            # 4. Ingest People
+            people_rows = [gw.person_row(x) for x in case_data.entities.people]
+            people_results = cls._run_batch(tx, gw.PEOPLE_MERGE, people_rows, {"case_id": case_id, "now": now})
+            created = sum(1 for r in people_results if r.get("was_created"))
+            nodes_created += created; nodes_matched += len(people_results)-created; rel_created += len(people_rows)
 
-        # 5. Ingest Phones
-        phone_rows = [gw.phone_row(x) for x in case_data.entities.phones]
-        phone_results = cls._run_batch(session, gw.PHONES_MERGE, phone_rows, {"case_id":case_id,"now":now})
-        created=sum(1 for r in phone_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(phone_results)-created; rel_created+=len(phone_rows)
-        owner_rows=gw.phone_owns_rows(phone_rows)
-        cls._run_batch(session,gw.PHONE_OWNS,owner_rows,{})
-        rel_created+=len(owner_rows)
+            # 4b. FIR -> accused Person links
+            for acc_params in fir_accused_links:
+                tx.run(gw.FIR_ACCUSED_INVOLVES, acc_params)
+                rel_created += 1
 
-        # 6. Ingest BankAccounts
-        bank_rows=[gw.bank_account_row(x) for x in case_data.entities.bank_accounts]
-        bank_results=cls._run_batch(session,gw.BANK_ACCOUNTS_MERGE,bank_rows,{"case_id":case_id,"now":now})
-        created=sum(1 for r in bank_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(bank_results)-created; rel_created+=len(bank_rows)
-        owner_rows=gw.bank_owns_rows(bank_rows)
-        cls._run_batch(session,gw.BANK_OWNS,owner_rows,{})
-        rel_created+=len(owner_rows)
+            # 5. Ingest Phones
+            phone_rows = [gw.phone_row(x) for x in case_data.entities.phones]
+            phone_results = cls._run_batch(tx, gw.PHONES_MERGE, phone_rows, {"case_id":case_id,"now":now})
+            created=sum(1 for r in phone_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(phone_results)-created; rel_created+=len(phone_rows)
+            owner_rows=gw.phone_owns_rows(phone_rows)
+            cls._run_batch(tx,gw.PHONE_OWNS,owner_rows,{})
+            rel_created+=len(owner_rows)
 
-        # 7. Ingest Vehicles
-        vehicle_rows=[gw.vehicle_row(x) for x in case_data.entities.vehicles]
-        vehicle_results=cls._run_batch(session,gw.VEHICLES_MERGE,vehicle_rows,{"case_id":case_id,"now":now})
-        created=sum(1 for r in vehicle_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(vehicle_results)-created; rel_created+=len(vehicle_rows)
-        owner_rows=gw.vehicle_owns_rows(vehicle_rows)
-        cls._run_batch(session,gw.VEHICLE_OWNS,owner_rows,{})
-        rel_created+=len(owner_rows)
+            # 6. Ingest BankAccounts
+            bank_rows=[gw.bank_account_row(x) for x in case_data.entities.bank_accounts]
+            bank_results=cls._run_batch(tx,gw.BANK_ACCOUNTS_MERGE,bank_rows,{"case_id":case_id,"now":now})
+            created=sum(1 for r in bank_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(bank_results)-created; rel_created+=len(bank_rows)
+            owner_rows=gw.bank_owns_rows(bank_rows)
+            cls._run_batch(tx,gw.BANK_OWNS,owner_rows,{})
+            rel_created+=len(owner_rows)
 
-        # 8. Ingest Social Handles
-        social_rows=[gw.social_handle_row(x) for x in case_data.entities.social_handles]
-        social_results=cls._run_batch(session,gw.SOCIAL_HANDLES_MERGE,social_rows,{"case_id":case_id,"now":now})
-        created=sum(1 for r in social_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(social_results)-created; rel_created+=len(social_rows)
-        owner_rows=gw.social_has_handle_rows(social_rows)
-        cls._run_batch(session,gw.SOCIAL_HAS_HANDLE,owner_rows,{})
-        rel_created+=len(owner_rows)
+            # 7. Ingest Vehicles
+            vehicle_rows=[gw.vehicle_row(x) for x in case_data.entities.vehicles]
+            vehicle_results=cls._run_batch(tx,gw.VEHICLES_MERGE,vehicle_rows,{"case_id":case_id,"now":now})
+            created=sum(1 for r in vehicle_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(vehicle_results)-created; rel_created+=len(vehicle_rows)
+            owner_rows=gw.vehicle_owns_rows(vehicle_rows)
+            cls._run_batch(tx,gw.VEHICLE_OWNS,owner_rows,{})
+            rel_created+=len(owner_rows)
 
-        # 9. Ingest IP Addresses
-        ip_rows=[gw.ip_address_row(x) for x in case_data.entities.ip_addresses]
-        ip_results=cls._run_batch(session,gw.IP_ADDRESSES_MERGE,ip_rows,{"case_id":case_id,"now":now})
-        created=sum(1 for r in ip_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(ip_results)-created; rel_created+=len(ip_rows)
+            # 8. Ingest Social Handles
+            social_rows=[gw.social_handle_row(x) for x in case_data.entities.social_handles]
+            social_results=cls._run_batch(tx,gw.SOCIAL_HANDLES_MERGE,social_rows,{"case_id":case_id,"now":now})
+            created=sum(1 for r in social_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(social_results)-created; rel_created+=len(social_rows)
+            owner_rows=gw.social_has_handle_rows(social_rows)
+            cls._run_batch(tx,gw.SOCIAL_HAS_HANDLE,owner_rows,{})
+            rel_created+=len(owner_rows)
 
-        # 10. Ingest Locations & Cell Towers
-        loc_rows=[gw.location_row(x) for x in case_data.entities.locations]
-        loc_results=cls._run_batch(session,gw.LOCATIONS_MERGE,loc_rows,{"case_id":case_id,"now":now})
-        created=sum(1 for r in loc_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(loc_results)-created; rel_created+=len(loc_rows)
-        tower_rows=[gw.cell_tower_row(x) for x in case_data.entities.cell_towers]
-        tower_results=cls._run_batch(session,gw.CELL_TOWERS_MERGE,tower_rows,{"case_id":case_id,"now":now})
-        created=sum(1 for r in tower_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(tower_results)-created; rel_created+=len(tower_rows)
-        tower_loc=gw.cell_tower_located_at_rows(tower_rows)
-        cls._run_batch(session,gw.CELL_TOWER_LOCATED_AT,tower_loc,{})
-        rel_created+=len(tower_loc)
+            # 9. Ingest IP Addresses
+            ip_rows=[gw.ip_address_row(x) for x in case_data.entities.ip_addresses]
+            ip_results=cls._run_batch(tx,gw.IP_ADDRESSES_MERGE,ip_rows,{"case_id":case_id,"now":now})
+            created=sum(1 for r in ip_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(ip_results)-created; rel_created+=len(ip_rows)
+            pip_rows = gw.person_uses_ip_rows(ip_rows)
+            cls._run_batch(tx, gw.PERSON_USES_IP, pip_rows, {})
+            rel_created += len(pip_rows)
+            sip_rows = gw.social_uses_ip_rows(social_rows)
+            cls._run_batch(tx, gw.SOCIAL_USES_IP, sip_rows, {})
+            rel_created += len(sip_rows)
 
-        # 11. Ingest Communications (CALLED directed edges) -- one UNWIND batch
-        comm_rows = [gw.communication_row(comm) for comm in case_data.relationships.communications]
-        cls._run_batch(session, gw.CALLED_MERGE, comm_rows, {"case_id": case_id, "now": now})
-        rel_created += len(comm_rows)
+            # 10. Ingest Locations & Cell Towers
+            loc_rows=[gw.location_row(x) for x in case_data.entities.locations]
+            loc_results=cls._run_batch(tx,gw.LOCATIONS_MERGE,loc_rows,{"case_id":case_id,"now":now})
+            created=sum(1 for r in loc_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(loc_results)-created; rel_created+=len(loc_rows)
+            tower_rows=[gw.cell_tower_row(x) for x in case_data.entities.cell_towers]
+            tower_results=cls._run_batch(tx,gw.CELL_TOWERS_MERGE,tower_rows,{"case_id":case_id,"now":now})
+            created=sum(1 for r in tower_results if r.get("was_created")); nodes_created+=created; nodes_matched+=len(tower_results)-created; rel_created+=len(tower_rows)
+            tower_loc=gw.cell_tower_located_at_rows(tower_rows)
+            cls._run_batch(tx,gw.CELL_TOWER_LOCATED_AT,tower_loc,{})
+            rel_created+=len(tower_loc)
 
-        # 12. Ingest Transactions (TRANSFERRED_TO & Transaction Node) -- one UNWIND batch
-        tx_rows = [gw.transaction_row(tx) for tx in case_data.relationships.transactions]
-        tx_results = cls._run_batch(session, gw.TRANSACTIONS_MERGE, tx_rows, {"case_id": case_id, "now": now})
-        # Per input record (as before): created if a row came back with was_created, otherwise matched.
-        created = sum(1 for r in tx_results if r.get("was_created"))
-        nodes_created += created
-        nodes_matched += len(tx_rows) - created
-        rel_created += 2 * len(tx_rows)
+            # 11. Ingest Communications (CALLED directed edges)
+            comm_rows = [gw.communication_row(comm) for comm in case_data.relationships.communications]
+            cls._run_batch(tx, gw.CALLED_MERGE, comm_rows, {"case_id": case_id, "now": now})
+            rel_created += len(comm_rows)
 
-        # 13. Ingest Surveillance Logs (LOCATED_AT relationships) -- three UNWIND batches
-        #     (Location MERGE, Person LOCATED_AT, Vehicle LOCATED_AT), preserving the
-        #     original write order: all Locations exist before any LOCATED_AT MATCH.
-        surv_loc_rows: List[Dict[str, Any]] = []
-        surv_person_rows: List[Dict[str, Any]] = []
-        surv_vehicle_rows: List[Dict[str, Any]] = []
-        for s_log in case_data.surveillance_logs:
-            surv_loc_rows.append(gw.surveillance_location_row(s_log))
-            surv_person_rows.extend(gw.surveillance_person_rows(s_log))
-            surv_vehicle_rows.extend(gw.surveillance_vehicle_rows(s_log))
-        cls._run_batch(session, gw.SURVEILLANCE_LOCATIONS_MERGE, surv_loc_rows, {"case_id": case_id, "now": now})
-        cls._run_batch(session, gw.SURVEILLANCE_PERSON_LOCATED_AT, surv_person_rows, {"case_id": case_id})
-        rel_created += len(surv_person_rows)
-        cls._run_batch(session, gw.SURVEILLANCE_VEHICLE_LOCATED_AT, surv_vehicle_rows, {"case_id": case_id})
-        rel_created += len(surv_vehicle_rows)
+            # 12. Ingest Transactions
+            tx_rows = [gw.transaction_row(tx_record) for tx_record in case_data.relationships.transactions]
+            tx_results = cls._run_batch(tx, gw.TRANSACTIONS_MERGE, tx_rows, {"case_id": case_id, "now": now})
+            created = sum(1 for r in tx_results if r.get("was_created"))
+            nodes_created += created
+            nodes_matched += len(tx_rows) - created
+            rel_created += 2 * len(tx_rows)
 
-        # 14. Ingest Criminal History (PriorCase nodes & HAS_PRIOR_CASE) -- one UNWIND batch
-        ch_rows = [gw.criminal_history_row(ch) for ch in case_data.criminal_history]
-        ch_results = cls._run_batch(session, gw.PRIOR_CASES_MERGE, ch_rows, {"case_id": case_id, "now": now})
-        # A record whose Person does not exist returns no row (as before: res_ch is None -> matched).
-        created = sum(1 for r in ch_results if r.get("was_created"))
-        nodes_created += created
-        nodes_matched += len(ch_rows) - created
-        rel_created += 2 * len(ch_rows)
+            # 13. Ingest Surveillance Logs
+            surv_loc_rows: List[Dict[str, Any]] = []
+            surv_person_rows: List[Dict[str, Any]] = []
+            surv_vehicle_rows: List[Dict[str, Any]] = []
+            surv_phone_rows: List[Dict[str, Any]] = []
+            for s_log in case_data.surveillance_logs:
+                surv_loc_rows.append(gw.surveillance_location_row(s_log))
+                surv_person_rows.extend(gw.surveillance_person_rows(s_log))
+                surv_vehicle_rows.extend(gw.surveillance_vehicle_rows(s_log))
+                surv_phone_rows.extend(gw.surveillance_phone_rows(s_log))
+            cls._run_batch(tx, gw.SURVEILLANCE_LOCATIONS_MERGE, surv_loc_rows, {"case_id": case_id, "now": now})
+            cls._run_batch(tx, gw.SURVEILLANCE_PERSON_LOCATED_AT, surv_person_rows, {"case_id": case_id})
+            rel_created += len(surv_person_rows)
+            cls._run_batch(tx, gw.SURVEILLANCE_VEHICLE_LOCATED_AT, surv_vehicle_rows, {"case_id": case_id})
+            rel_created += len(surv_vehicle_rows)
+            cls._run_batch(tx, gw.SURVEILLANCE_PHONE_LOCATED_AT, surv_phone_rows, {"case_id": case_id})
+            rel_created += len(surv_phone_rows)
 
-        # 15. Ingest Intelligence Reports (SourceRecord representation) -- one UNWIND batch
-        ir_rows = [gw.intelligence_report_row(ir) for ir in case_data.intelligence_reports]
-        ir_results = cls._run_batch(session, gw.INTEL_REPORTS_MERGE, ir_rows, {"case_id": case_id, "now": now})
-        source_records_created += len(ir_rows)
-        created = sum(1 for r in ir_results if r.get("was_created"))
-        nodes_created += created
-        nodes_matched += len(ir_rows) - created
-        rel_created += len(ir_rows)
+            # 14. Ingest Criminal History
+            ch_rows = [gw.criminal_history_row(ch) for ch in case_data.criminal_history]
+            ch_results = cls._run_batch(tx, gw.PRIOR_CASES_MERGE, ch_rows, {"case_id": case_id, "now": now})
+            created = sum(1 for r in ch_results if r.get("was_created"))
+            nodes_created += created
+            nodes_matched += len(ch_rows) - created
+            rel_created += 2 * len(ch_rows)
+
+            # 15. Ingest Intelligence Reports
+            ir_rows = [gw.intelligence_report_row(ir) for ir in case_data.intelligence_reports]
+            ir_results = cls._run_batch(tx, gw.INTEL_REPORTS_MERGE, ir_rows, {"case_id": case_id, "now": now})
+            source_records_created += len(ir_rows)
+            created = sum(1 for r in ir_results if r.get("was_created"))
+            nodes_created += created
+            nodes_matched += len(ir_rows) - created
+            rel_created += len(ir_rows)
 
         # Run Insights Engine to compute case and cross-case insights
         insights = InsightsEngine.run_all_detectors(session, case_id=case_id)
@@ -220,14 +261,13 @@ class IngestionService:
             new_cross_case_links=cross_case_links_count,
             new_insights=len(insights),
             warnings=warnings,
-            insights=insights,
-            case_already_exists=case_already_exists
+            insights=insights
         )
         logger.info(f"Completed ingestion for case '{case_id}': created {nodes_created} nodes, {rel_created} rels, generated {len(insights)} insights.")
         return response
 
     @staticmethod
-    def _execute_replace_cleanup(session: Session, case_id: str) -> None:
+    def _execute_replace_cleanup(runner: Any, case_id: str) -> None:
         """
         Safely removes graph elements exclusively associated with case_id,
         or removes case_id from multi-case entities.
@@ -239,7 +279,7 @@ class IngestionService:
         WHERE n.case_ids = [$case_id]
         DETACH DELETE n
         """
-        session.run(delete_exclusive_cypher, {"case_id": case_id})
+        runner.run(delete_exclusive_cypher, {"case_id": case_id})
 
         # 2. For multi-case nodes, remove case_id from their case_ids list
         update_multicase_cypher = """
@@ -247,5 +287,6 @@ class IngestionService:
         WHERE $case_id IN n.case_ids AND size(n.case_ids) > 1
         SET n.case_ids = [c IN n.case_ids WHERE c <> $case_id]
         """
-        session.run(update_multicase_cypher, {"case_id": case_id})
+        runner.run(update_multicase_cypher, {"case_id": case_id})
+
 
