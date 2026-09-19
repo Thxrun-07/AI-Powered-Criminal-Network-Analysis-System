@@ -1,4 +1,4 @@
-﻿# 🧪 Automated Test Suite
+# 🧪 Automated Test Suite
 
 The `tests/` directory contains an enterprise-grade automated test suite ensuring forensic accuracy, data model integrity, API stability, PII data masking, and live Neo4j equivalence.
 
@@ -16,6 +16,7 @@ tests/
 │   ├── test_batched_relationship_writers.py # Batched Cypher query generators
 │   ├── test_blockchain_ledger.py         # Merkle root & SHA-256 chain verification
 │   ├── test_case_delete.py               # Cascading case deletion & graph pruning
+│   ├── test_data_ingestion_pipeline_audit.py # Pipeline audit: PDF extraction, timestamps, deduplication
 │   ├── test_delta_processor.py           # Real-time event application & AST cypher guard
 │   ├── test_entity_search.py             # Entity fuzzy search & regex queries
 │   ├── test_event_model.py               # Pydantic v2 event schema validation
@@ -26,7 +27,9 @@ tests/
 │   └── test_shortest_path.py             # Ambiguity-safe pathfinding resolution
 │
 ├── integration/             # 🔗 API & Workflow Integration Tests
+│   ├── test_case_identity_ingestion_audit.py # ID-first person identity resolution audit
 │   ├── test_events_api.py                # Streaming event ingestion endpoint (`/api/events`)
+│   ├── test_freetext_person_ingestion_audit.py # Non-person words filter against ghost nodes
 │   ├── test_health_and_reset.py          # Liveness & database reset routes
 │   ├── test_ingest_merge.py              # Upsert & deduplication logic
 │   ├── test_ingest_ordering.py           # Out-of-order temporal event ingestion
@@ -49,7 +52,7 @@ tests/
 ## 🚀 Running the Tests
 
 ### 1. Run All Standard Unit & Integration Tests (Offline)
-These tests require **zero external dependencies** (no Neo4j server or internet needed) and run in **~3 seconds**:
+These tests require **zero external dependencies** (no Neo4j server or internet needed) and run in **~4 seconds**:
 
 ```powershell
 pytest tests/unit tests/integration
@@ -57,8 +60,9 @@ pytest tests/unit tests/integration
 
 **Output**:
 ```text
-======================= 211 passed in 3.00s =======================
+======================= 226 passed in 4.13s =======================
 ```
+
 
 ### 2. Run Only Unit Tests
 ```powershell

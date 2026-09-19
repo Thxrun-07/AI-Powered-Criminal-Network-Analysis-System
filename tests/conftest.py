@@ -16,6 +16,9 @@ def isolate_blockchain_ledger(monkeypatch, tmp_path):
     # Reset the in-memory chain so each test starts fresh
     from backend.services.blockchain_service import BlockchainService
     BlockchainService._chain = []
+    monkeypatch.setattr(BlockchainService, "_load_ledger_from_session", lambda *args, **kwargs: False)
+    monkeypatch.setattr(BlockchainService, "_save_ledger_to_session", lambda *args, **kwargs: None)
+    monkeypatch.setattr(BlockchainService, "_clean_orphans", lambda *args, **kwargs: 0)
 
 
 @pytest.fixture(autouse=True)

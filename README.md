@@ -14,7 +14,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <p align="center">
   <img src="https://img.shields.io/badge/PROTOTYPE_STATUS-EVALUATION_READY_🟢-00F5D4?style=for-the-badge&logo=radar&logoColor=black" alt="Status" />
-  <img src="https://img.shields.io/badge/TEST_HARNESS-211%20PASSED%20(100%25)-00E676?style=for-the-badge&logo=pytest&logoColor=white" alt="Tests" />
+  <img src="https://img.shields.io/badge/TEST_HARNESS-226%20PASSED%20(100%25)-00E676?style=for-the-badge&logo=pytest&logoColor=white" alt="Tests" />
   <img src="https://img.shields.io/badge/AI_COPILOT-GEMINI_2.5_FLASH_+_HEURISTICS-7928CA?style=for-the-badge&logo=google&logoColor=white" alt="Gemini AI" />
   <img src="https://img.shields.io/badge/GRAPH_CORE-NEO4J_5.27_AURA-008CC1?style=for-the-badge&logo=neo4j&logoColor=white" alt="Neo4j" />
   <img src="https://img.shields.io/badge/CHAIN_OF_CUSTODY-SHA--256_HASH_CHAIN-FF9900?style=for-the-badge&logo=blockchaindotcom&logoColor=white" alt="Evidence Ledger" />
@@ -42,7 +42,8 @@
 
 | 🎨 [Frontend](frontend/README.md) | ⚙️ [Backend](backend/README.md) | 📂 [Dataset](dataset/README.md) | 🧪 [Tests](tests/README.md) | 🔒 [Blockchain](data/README.md) | 📑 [Documentation](docs/README.md) |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| React 19 + TypeScript + Tailwind CSS | FastAPI & Cypher Engine | Multi-Modal Forensic Files | 211 Passing Tests | SHA-256 Merkle Ledger | Technical Specifications |
+| React 19 + TypeScript + Tailwind CSS | FastAPI & Cypher Engine | Multi-Modal Forensic Files | 226 Passing Tests | SHA-256 Merkle Ledger | Technical Specifications |
+
 
 ---
 
@@ -71,13 +72,21 @@ Judges and evaluators can verify the complete end-to-end investigative workflow 
 
 ### Step 1: Launch the Application
 ```powershell
-# Option A: Docker Compose (Spins up Neo4j + FastAPI)
-docker-compose up -d
+# Option A: 1-Click Launch (Windows — Recommended)
+.\start_system.bat
+# (Launches FastAPI backend on http://127.0.0.1:8000 and React 19 frontend on http://localhost:3000)
 
-# Option B: Native Local
-uvicorn backend.main:app --reload
+# Option B: Run in Terminals
+# Terminal 1 (Backend):
+python -m uvicorn backend.main:app --reload --port 8000
+# Terminal 2 (Frontend):
+cd frontend && npm run dev
+
+# Option C: Docker Compose (Spins up Neo4j + FastAPI)
+docker-compose up -d
 ```
-Open your browser to: **`http://localhost:8000`**
+Open your browser to: **`http://localhost:3000`** (or backend root **`http://localhost:8000`**)
+
 
 ### Step 2: Ingest Case 001 (Homicide Investigation)
 ```powershell
@@ -261,15 +270,19 @@ To maintain rigorous engineering integrity, here is the exact breakdown of imple
 | Capability | Status | Implementation Details |
 | :--- | :---: | :--- |
 | **Multi-Modal Graph Ingestion** | 🟢 **Implemented** | Normalizes FIRs, CDRs, Bank Wires, and CCTV ANPR into Neo4j property graph. |
+| **Atomic ACID Transactions** | 🟢 **Implemented** | All graph writes wrapped in `with session.begin_transaction() as tx:` for rollback safety. |
+| **ID-First Identity Resolution**| 🟢 **Implemented** | ID-first resolution (`people_by_id`) preventing same-name suspect collisions. |
+| **Zero Hallucination & PII Filter**| 🟢 **Implemented** | No dummy entities; `NON_PERSON_WORDS` filter blocks ghost Person nodes from free text. |
+| **PDF Extraction Engine** | 🟢 **Implemented** | Integrated `pdfplumber` and `pypdf` with HTTP 422 handling for scanned/corrupt briefs. |
 | **10 Scoped Cypher Detectors** | 🟢 **Implemented** | Automated Cypher algorithms for Hawala, Burner SIMs, convoys, and co-locations. |
 | **Gemini 2.5 Flash Copilot** | 🟢 **Implemented** | Natural language graph synthesis via official Google GenAI SDK. |
 | **Heuristic Fallback Engine** | 🟢 **Implemented** | Rule-based topology summarizer ensuring 100% offline uptime without API credits. |
-| **Hash-Chained Custody Ledger** | 🟢 **Implemented** | SHA-256 Merkle root block generator with tamper-verification API. |
-| **Automated Test Suite** | 🟢 **Implemented** | 211 passing unit & integration tests running completely offline in ~1.2 seconds. |
+| **Hash-Chained Custody Ledger** | 🟢 **Implemented** | Dual-persisted SHA-256 Merkle root ledger (JSON + Neo4j Cloud `:Block` nodes). |
+| **Automated Test Suite** | 🟢 **Implemented** | 226 passing unit & integration tests running completely offline in ~4 seconds. |
 | **React 19 + TypeScript Frontend** | 🟢 **Implemented** | Fully typed `.tsx` codebase with `strict: true`, typed props/state/refs, and zero `any` leaks. Built with Vite 5. |
 | **Tailwind CSS Integration** | 🟢 **Implemented** | Utility-first CSS framework with custom Atlas design tokens, glassmorphism, and neomorphic components. |
-| **Interactive Web Dashboard** | 🟢 **Implemented** | Vis.js ForceAtlas2 network explorer with docked Copilot chat drawer. |
-| **Deterministic Entity Matching**| 🟡 **Prototype Scope** | Strict primary key matching (Phone, IMEI, Account, PAN) to eliminate false merges. |
+| **Interactive Web Dashboard** | 🟢 **Implemented** | Vis.js ForceAtlas2 network explorer with post-stabilization freeze and docked Copilot drawer. |
+| **Duplicate Case Upload Guard** | 🟢 **Implemented** | Pre-upload inspection and backend self-reporting popup modal for already-ingested cases. |
 | **Distributed Consensus** | 🔵 **Future Roadmap** | Multi-node Raft/PBFT consensus across separate agency jurisdictions. |
 | **Probabilistic Fuzzy NER** | 🔵 **Future Roadmap** | Legal NER fine-tuning for resolving fuzzy suspect name variants. |
 
@@ -283,13 +296,15 @@ To maintain rigorous engineering integrity, here is the exact breakdown of imple
 | **Type System** | TypeScript | 5.6 | `strict: true`, typed props/state/refs/events across all `.tsx` files |
 | **CSS Framework** | Tailwind CSS | 3.4 | Utility-first styling with custom Atlas design tokens |
 | **Bundler** | Vite | 5.x | Lightning-fast HMR and optimized production builds (`tsc && vite build`) |
-| **Graph Visualization** | Vis.js Network | 9.1 | ForceAtlas2-based interactive network canvas |
+| **Graph Visualization** | Vis.js Network | 9.1 | ForceAtlas2-based interactive network canvas with auto-freeze |
 | **Charts** | Chart.js | 4.4 | Bar and doughnut charts for ecosystem metrics |
 | **Backend** | FastAPI | 0.100+ | Async Python REST API with Pydantic v2 validation |
 | **Graph Database** | Neo4j Aura | 5.27 | Cloud-hosted property graph with Cypher query engine |
 | **AI Copilot** | Google Gemini | 2.5 Flash | Natural language graph intelligence with heuristic fallback |
-| **Evidence Integrity** | SHA-256 | — | Hash-chained Merkle root ledger for chain of custody |
-| **Testing** | Pytest | 9.1 | 211 unit & integration tests, 100% offline execution |
+| **PDF Extraction** | pdfplumber & pypdf | 0.10+ / 4.0+ | Forensic FIR text extraction from documents and briefs |
+| **Evidence Integrity** | SHA-256 | — | Dual-persisted hash-chained Merkle root ledger |
+| **Testing** | Pytest | 9.1 | 226 unit & integration tests, 100% offline execution |
+
 
 ---
 
@@ -350,7 +365,7 @@ flowchart TD
 
 ## 🧪 Comprehensive Verification Suite
 
-Run all 211 unit and integration tests completely offline:
+Run all 226 unit and integration tests completely offline:
 
 ```powershell
 pytest tests/unit tests/integration
@@ -359,31 +374,34 @@ pytest tests/unit tests/integration
 ```text
 ============================= test session starts =============================
 platform win32 -- Python 3.14.0, pytest-9.1.1
-rootdir: C:\Users\shinc\projects\AI-Powered-Criminal-Network-Analysis-System
-collected 211 items
+rootdir: C:\Users\shinc\projects\SIH-189-completed
+collected 226 items
 
 tests\unit\test_ai_insights.py .....                                     [  2%]
-tests\unit\test_batched_relationship_writers.py .....................    [ 12%]
-tests\unit\test_blockchain_ledger.py ....                                [ 14%]
-tests\unit\test_case_delete.py ......                                    [ 17%]
-tests\unit\test_delta_processor.py ................                      [ 24%]
-tests\unit\test_entity_search.py .....                                   [ 27%]
-tests\unit\test_event_model.py ...............                           [ 34%]
-tests\unit\test_insights_10_types.py ..........                          [ 38%]
-tests\unit\test_logging_masking.py ...                                   [ 40%]
+tests\unit\test_batched_relationship_writers.py .....................    [ 11%]
+tests\unit\test_blockchain_ledger.py ....                                [ 13%]
+tests\unit\test_case_delete.py ......                                    [ 16%]
+tests\unit\test_data_ingestion_pipeline_audit.py ........                [ 19%]
+tests\unit\test_delta_processor.py ................                      [ 26%]
+tests\unit\test_entity_search.py .....                                   [ 28%]
+tests\unit\test_event_model.py ...............                           [ 35%]
+tests\unit\test_insights_10_types.py ..........                          [ 39%]
+tests\unit\test_logging_masking.py ...                                   [ 41%]
 tests\unit\test_rankings.py ....                                         [ 42%]
-tests\unit\test_scoped_detectors.py .................................... [ 59%]
-......................                                                   [ 69%]
-tests\unit\test_shortest_path.py ......                                  [ 72%]
+tests\unit\test_scoped_detectors.py .................................... [ 58%]
+......................                                                   [ 68%]
+tests\unit\test_shortest_path.py ......                                  [ 71%]
+tests\integration\test_case_identity_ingestion_audit.py ....             [ 73%]
 tests\integration\test_events_api.py .........................           [ 84%]
-tests\integration\test_health_and_reset.py ....                          [ 86%]
+tests\integration\test_freetext_person_ingestion_audit.py ...            [ 85%]
+tests\integration\test_health_and_reset.py ....                          [ 87%]
 tests\integration\test_ingest_merge.py ....                              [ 88%]
-tests\integration\test_ingest_ordering.py ......                         [ 90%]
-tests\integration\test_ingest_replace.py ..                              [ 91%]
+tests\integration\test_ingest_ordering.py ......                         [ 91%]
+tests\integration\test_ingest_replace.py ..                              [ 92%]
 tests\integration\test_legacy_ingest_casedata.py ................        [ 99%]
 tests\integration\test_unified_ingest.py .                               [100%]
 
-====================== 211 passed in 1.22s =======================
+====================== 226 passed in 4.13s =======================
 ```
 
 ---
@@ -398,7 +416,10 @@ AI-Powered-Criminal-Network-Analysis-System/
 ├── docker-compose.yml                  # Neo4j + Backend container orchestration
 ├── Dockerfile                          # Multi-stage production container build
 ├── pytest.ini                          # Pytest configuration
-├── requirements.txt                    # Pinned production dependencies
+├── requirements.txt                    # Pinned production dependencies (FastAPI, Neo4j, GenAI, pdfplumber)
+├── start_system.bat                    # 🚀 1-Click launcher for Backend (8000) & Frontend (3000)
+├── run_backend.bat                     # 🚀 1-Click launcher for FastAPI backend
+├── run_frontend.bat                    # 🚀 1-Click launcher for Vite React frontend
 │
 ├── frontend/                           # 🎨 React 19 + TypeScript + Tailwind CSS Application
 │   ├── index.html                      # SPA entry point (loads /src/main.tsx)
@@ -418,21 +439,21 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   │   └── components/
 │   │       ├── Sidebar.tsx             # Navigation sidebar & topbar
 │   │       ├── OverviewModule.tsx      # Command Center with Chart.js analytics
-│   │       ├── GraphExplorerModule.tsx # Vis.js ForceAtlas2 interactive graph
+│   │       ├── GraphExplorerModule.tsx # Vis.js ForceAtlas2 interactive graph with auto-freeze
 │   │       ├── EntitySearchModule.tsx  # Multi-property entity search
 │   │       ├── ShortestPathModule.tsx  # Path analysis between entities
 │   │       ├── RankingsModule.tsx      # Centrality rankings (PageRank, Betweenness)
 │   │       ├── PatternInsightsModule.tsx # 10 forensic pattern detectors
 │   │       ├── BlockchainModule.tsx    # SHA-256 chain of custody ledger
-│   │       ├── CaseRegistryModule.tsx  # Case management & entity breakdown
-│   │       ├── DataIngestionModule.tsx # JSON/CSV/narrative ingestion
-│   │       └── Modals.tsx             # Entity detail & AI dossier modals
-│   ├── dist/                           # Production build output (committed for deployment)
+│   │       ├── CaseRegistryModule.tsx  # Case management, embed ingestion & document attachment
+│   │       ├── DataIngestionModule.tsx # JSON/CSV/PDF/narrative ingestion
+│   │       └── Modals.tsx             # Entity detail, AI dossier & duplicate case alert modals
+│   ├── dist/                           # Production build output (served by FastAPI at root /)
 │   └── README.md                       # 👉 Detailed Frontend Guide
 │
 ├── backend/                            # ⚙️ FastAPI Graph Intelligence Engine
-│   ├── main.py                         # Application entrypoint & static routes
-│   ├── database.py                     # Neo4j driver connection pool
+│   ├── main.py                         # Application entrypoint, static routes & dist mount
+│   ├── database.py                     # Neo4j driver connection pool with auto-reconnect
 │   ├── config.py                       # Settings & environment validation
 │   ├── logging_config.py               # Structured logging with PII masking
 │   ├── models/                         # Pydantic v2 schemas (Entities, Events, Insights)
@@ -446,7 +467,7 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   ├── envelope_sample.json            # Real-time streaming event envelope
 │   └── README.md                       # 👉 Forensic Dataset & Ingestion Guide
 │
-├── tests/                              # 🧪 Automated Test Suite (211+ Passing Tests)
+├── tests/                              # 🧪 Automated Test Suite (226 Passing Tests)
 │   ├── unit/                           # Isolated unit tests
 │   ├── integration/                    # API & pipeline integration tests
 │   ├── live/                           # Live Neo4j equivalence tests
@@ -456,6 +477,7 @@ AI-Powered-Criminal-Network-Analysis-System/
 ├── data/                               # 🔒 Cryptographic Blockchain Ledger
 │   ├── blockchain_ledger.json          # Verifiable chain-of-custody blocks
 │   └── README.md                       # 👉 Blockchain & Tamper-Proofing Guide
+
 │
 └── docs/                               # 📑 Technical Specifications & Runbooks
     ├── assets/                         # 🎨 High-Res Vector SVG HUD Visuals & Screenshots

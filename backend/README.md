@@ -1,4 +1,4 @@
-﻿# ⚙️ Backend Core (Graph Intelligence & REST API Engine)
+# ⚙️ Backend Core (Graph Intelligence & REST API Engine)
 
 The `backend/` directory houses the core intelligence engine for the **AI-Powered Criminal Network Analysis System**, implemented in Python 3.11+ using **FastAPI** and **Neo4j**. It orchestrates forensic graph persistence, real-time event ingestion, 10 suspicious pattern detectors, ambiguity-safe shortest path calculations, graph centrality rankings, cryptographic chain-of-custody ledgers, and the **Gemini 2.5 Flash AI Copilot**.
 
@@ -73,10 +73,20 @@ backend/
 
 ### 3. Blockchain Evidence Ledger (`services/blockchain_service.py`)
 - Computes SHA-256 Merkle trees across all ingested forensic entities and relations.
-- Appends tamper-evident blocks linking each case to the previous block hash (`previous_hash`).
-- Exposes `GET /api/blockchain/verify` to validate the cryptographic integrity of the entire chain of custody.
+- **Dual Persistence & Cloud Sync**: Blocks are committed to local JSON (`data/blockchain_ledger.json`) AND synchronized directly to Neo4j Cloud as `:Block` nodes chained via `[:CHAINED_TO]`.
+- **Automatic Orphan Pruning**: When a case is deleted via `DELETE /api/cases/{case_id}`, associated evidence blocks are purged and the SHA-256 hash chain is dynamically recalculated.
+- Exposes `GET /api/v1/blockchain/verify` (and `GET /api/blockchain/verify`) to validate the cryptographic integrity of the entire chain of custody.
 
-### 4. Real-Time Event Streaming Engine (`services/delta_processor.py`)
+### 4. High-Integrity Ingestion Pipeline (`services/ingestion_service.py`, `services/ingestion_engine.py`)
+- **Atomic ACID Transactions**: All graph entity and relation writes are wrapped within `with session.begin_transaction() as tx:` to guarantee atomic rollback on failure.
+- **ID-First Identity Resolution (`people_by_id`)**: Primary key identifiers ensure suspects sharing the same name remain distinct nodes.
+- **Zero Hallucination Policy**: Purged hardcoded placeholder entities (e.g. "Amit Sharma"); strict prompting ensures no fictitious identities are introduced.
+- **Non-Person Words Filter**: `NON_PERSON_WORDS` filter prevents transaction/event descriptions (like "accounts emptied") from creating ghost Person nodes.
+- **PDF Extraction**: Integrated `pdfplumber` and `pypdf` in `routers/ingest.py` to extract text from FIR PDFs and intelligence memos with HTTP 422 handling for scanned/corrupt files.
+- **New Graph Relationships**: Added `USES_IP` (`(:Person|SocialHandle)-[:USES_IP]->(:IPAddress)`) and `SURVEILLANCE_PHONE_LOCATED_AT`.
+- **Payload Deduplication**: Multi-file ingestion calculates SHA-256 hashes to prevent redundant processing of identical files.
+
+### 5. Real-Time Event Streaming Engine (`services/delta_processor.py`)
 - Ingests streaming operational events (arrests, seizures, CDR call records, CCTV sightings) via `POST /api/events`.
 - Guarantees idempotent MERGE operations with deterministic business keys without rewriting the graph.
 
@@ -84,15 +94,20 @@ backend/
 
 ## 🏃 Running the Backend Locally
 
+### Option 1: 1-Click Launch (Windows)
+Double-click [`run_backend.bat`](../run_backend.bat) or [`start_system.bat`](../start_system.bat) from the root folder.
+
+### Option 2: Command Line
 ```powershell
 # 1. Install dependencies
 pip install -r requirements.txt
 
 # 2. Run backend server
-uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Interactive API documentation will be available at:
 - **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-- **Analyst Dashboard**: [http://localhost:8000/](http://localhost:8000/)
+- **Analyst Dashboard**: [http://localhost:8000/](http://localhost:8000/) (serves compiled React 19 build from `frontend/dist/`)
+

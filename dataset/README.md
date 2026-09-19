@@ -1,4 +1,4 @@
-﻿# 📂 Forensic Evidence Datasets
+# 📂 Forensic Evidence Datasets
 
 The `dataset/` directory contains structured, realistic forensic investigation datasets used to benchmark graph ingestion, pattern detection, cross-case link discovery, and blockchain evidence integrity verification.
 
@@ -43,20 +43,25 @@ dataset/
 ## 📥 How to Ingest Datasets
 
 ### Option A: Via Web UI
-1. Open the dashboard at [http://localhost:8000/](http://localhost:8000/).
-2. Click **"Ingest Case"** in the top navigation bar.
-3. Select `case_001_homicide.json` or `case_002_fraud.json`.
-4. Click **Submit**. The graph topology will automatically render, and the blockchain block will be minted.
+1. Open the analyst workspace at **`http://localhost:3000/`** (or backend root **`http://localhost:8000/`**).
+2. Click **"Case Registry"** in the sidebar, then click the **"+ Ingest New Case"** button.
+3. Choose your ingestion mode:
+   - **Upload File**: Select `case_001_homicide.json` or `case_002_fraud.json` (also supports `.pdf`, `.csv`, `.txt`).
+   - **Structured JSON**: Paste the JSON payload directly.
+   - **Raw Narrative**: Paste unstructured police complaints or informant memos.
+4. Click **Submit**.
+   - *Duplicate Guard*: If the case already exists in the system, a **"Case Already Uploaded"** alert popup prevents duplicate clutter and directs you to view or attach documents to the existing case.
+   - The graph topology renders automatically, cross-case bridges are computed, and a verifiable SHA-256 evidence block is minted.
 
 ### Option B: Via Terminal (PowerShell)
 ```powershell
-# Ingest Case 001
+# Ingest Case 001 (Homicide Investigation)
 Invoke-RestMethod -Uri "http://localhost:8000/api/cases/ingest" `
   -Method Post `
   -InFile "dataset/case_001_homicide.json" `
   -ContentType "application/json"
 
-# Ingest Case 002 (Cross-Case Linking)
+# Ingest Case 002 (Cross-Case Hawala Fraud)
 Invoke-RestMethod -Uri "http://localhost:8000/api/cases/ingest" `
   -Method Post `
   -InFile "dataset/case_002_fraud.json" `
@@ -69,3 +74,4 @@ curl -X POST "http://localhost:8000/api/cases/ingest" \
   -H "Content-Type: application/json" \
   -d @dataset/case_001_homicide.json
 ```
+

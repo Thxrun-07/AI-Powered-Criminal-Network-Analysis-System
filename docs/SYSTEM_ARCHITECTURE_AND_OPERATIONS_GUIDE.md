@@ -241,13 +241,13 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 #### Method C: Linux / Mac Bash
 ```bash
 export GEMINI_API_KEY="AIzaSyYourNewApiKeyHere"
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ### Step 3: Verify the Key
 Run this quick terminal command to verify your key is active:
 ```powershell
-python -c "from app.database import db; from app.services.gemini_service import GeminiService; s = db.get_session(); res = GeminiService.answer_graph_query(s, 'Who are the primary targets?'); print('Model:', res.ai_model); print('Answer preview:', res.answer[:80])"
+python -c "from backend.database import db; from backend.services.gemini_service import GeminiService; s = db.get_session(); res = GeminiService.answer_graph_query(s, 'Who are the primary targets?'); print('Model:', res.ai_model); print('Answer preview:', res.answer[:80])"
 ```
 - If it prints `Model: gemini-2.5-flash`, the new key is fully active!
 - If it prints `Model: gemini-2.5-flash (Demonstration Engine)`, the key is either unset or quota-exhausted, and the automatic heuristic engine is safely serving results.
@@ -258,21 +258,28 @@ python -c "from app.database import db; from app.services.gemini_service import 
 
 ### 6.1 Prerequisites
 - **Python**: 3.10 to 3.14
+- **Node.js**: v18+ and npm (for frontend development)
 - **Neo4j**: Neo4j AuraDB (Cloud) or Local Neo4j Desktop / Community Edition (v5.x+)
 - **OS**: Windows, macOS, or Linux
 
 ### 6.2 Installation
-In the project directory (`c:\Users\shinc\projects\SIH - 189`):
-```bash
+In the project directory (`c:\Users\shinc\projects\SIH-189-completed`):
+```powershell
+# 1. Install Python backend dependencies
 pip install -r requirements.txt
+
+# 2. Install React frontend dependencies
+cd frontend
+npm install
+cd ..
 ```
 
 ### 6.3 Configuring `.env`
 Ensure your `.env` file contains your database credentials and API key:
 ```env
 # Neo4j Database Connection
-NEO4J_URI=neo4j+s://907632e8.databases.neo4j.io
-NEO4J_USERNAME=907632e8
+NEO4J_URI=neo4j+s://128dd2a6.databases.neo4j.io
+NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=your_password_here
 NEO4J_DATABASE=neo4j
 
@@ -288,12 +295,26 @@ DEBUG=True
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-### 6.4 Starting the Server
-```bash
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+### 6.4 Starting the System
+
+#### Option 1: 1-Click Launch (Windows — Recommended)
+Double-click [`start_system.bat`](../start_system.bat) from the project root. This will launch:
+1. **FastAPI Backend**: `http://127.0.0.1:8000`
+2. **React 19 Frontend**: `http://localhost:3000`
+
+#### Option 2: Run in Two Terminals
+```powershell
+# Terminal 1 (Backend)
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2 (Frontend)
+cd frontend
+npm run dev
 ```
+
 Open your browser and navigate to:
-👉 **`http://127.0.0.1:8000/`**
+👉 **`http://localhost:3000/`** (Interactive React 19 Frontend)  
+👉 **`http://127.0.0.1:8000/docs`** (Swagger API Documentation)
 
 ### 6.5 Running Tests
 To verify all services, endpoints, and deletion handlers:
@@ -301,22 +322,23 @@ To verify all services, endpoints, and deletion handlers:
 # Run all unit tests (fast, mock-based)
 python -m pytest tests/unit/ -v
 
-# Run the complete test suite (excluding live cloud queries)
-python -m pytest tests/ -m "not live"
+# Run the complete test suite (226 passing tests)
+python -m pytest tests/unit tests/integration -q
 ```
 
 ### 6.6 How to Use Each Screen in the Web App
 
-| Screen | URL Anchor | Key Features |
-|---|---|---|
-| **Command Center** | `/#overview` | Live stats (cases, entities, database status), global search shortcut, system health check. |
-| **Graph Explorer** | `/#graph` | Interactive vis.js topology canvas, layout switcher (Organic, Hierarchical, Radial, Pipeline), physics pause, **Gemini AI Copilot** side-box with one-click inference chips. |
-| **Entity Search** | `/#search` | 360° entity lookup by name, phone, account number, or VIN. Displays 1-hop neighborhood and properties. |
-| **Shortest Path** | `/#path` | Computes shortest evidentiary bridge between any two entities (suspect -> victim). |
-| **Centrality Rankings**| `/#rankings` | Ranks key operators by Degree, Weighted Degree, or Cross-case Relevance. Cleanly displays "Data not found" if GDS is absent. |
-| **Automated Detectors**| `/#insights` | Scans for 10 forensic patterns (mule accounts, burner loops, cyclic laundering) + **✨ Case Summary** button. |
-| **Case Registry** | `/#cases` | View all filed FIRs, entity counts, status filters, **✨ Summary** intelligence dossiers, and **Per-Case Safe Deletion**. |
-| **Data Ingestion** | `/#ingest` | Batch ingest new case folders with FIR text, CDR CSVs, and Bank CSVs. |
+| Screen | Key Features |
+|---|---|
+| **Command Center** | Live ecosystem metrics, entity breakdown histograms, active FIR investigations, and system health status. |
+| **Graph Explorer** | Interactive vis.js canvas with ForceAtlas2 physics, auto-stabilization freeze (prevents jitter and CPU heating), layout selector (Organic, Hierarchical, Radial, Pipeline), and docked **Gemini AI Copilot** with quick prompt chips. |
+| **Entity Search** | 360° entity lookup by name, phone, account number, or VIN. Displays 1-hop neighborhood and properties. |
+| **Shortest Path** | Computes shortest evidentiary bridge between any two entities (suspect -> victim) with candidate disambiguation. |
+| **Centrality Rankings**| Ranks key operators by Degree, Weighted Degree, or Cross-case Relevance. Cleanly displays "Data not found" if GDS is absent. |
+| **Automated Detectors**| Scans for 10 forensic patterns (mule accounts, burner loops, cyclic laundering) + **✨ AI Dossier** synthesis. |
+| **Case Registry** | View all filed FIRs, entity counts, status filters, **Embed Case Ingest**, **Attach Document**, and **Per-Case Safe Deletion**. |
+| **Data Ingestion** | Multi-format case ingestion supporting `.json` dossiers, `.pdf` FIRs, CDR `.csv`, and raw text with duplicate detection. |
+| **Blockchain Ledger** | Verifies cryptographic chain of custody, SHA-256 Merkle roots, and tamper status across all blocks. |
 
 ---
 
@@ -329,18 +351,18 @@ python -m pytest tests/ -m "not live"
 # In PowerShell:
 $p = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
 Stop-Process -Id $p -Force
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
 ### Scenario 2: Neo4j Cloud Aura Connection Timeout / Defunct Connection
 **Error**: `Failed to read from defunct connection IPv4Address... ConnectionResetError(10054)`  
 **Explanation**: Cloud Neo4j Aura instances silently close idle connections after a period of inactivity.  
-**Fix**: Atlas handles this automatically via its connection pool. Refresh the page; the driver will reconnect on the next transaction. If Aura was paused, visit the [Neo4j Aura Console](https://console.neo4j.io/) to unpause the database.
+**Fix**: Atlas handles this automatically via its connection pool and automatic reconnection logic in `backend/routers/cases.py`. Refresh the page; the driver will reconnect on the next transaction. If Aura was paused, visit the [Neo4j Aura Console](https://console.neo4j.io/) to unpause the database.
 
 ### Scenario 3: "Neo4j Graph Data Science (GDS) library is not installed"
 **Fix**: On standard Aura instances or local community editions where GDS is not installed, Atlas automatically intercepts GDS calls and displays a clean `"Data not found"` message instead of an ugly stack trace. If you wish to enable native GDS:
 - Deploy Neo4j Enterprise or Neo4j AuraDS.
-- In `app/config.py`, ensure `ENABLE_GDS = True`.
+- In `backend/config.py`, ensure `ENABLE_GDS = True`.
 
 ### Scenario 4: Deleting a Single Case Safely
 **Feature**: `DELETE /api/cases/{case_id}?confirm=true`  
@@ -348,4 +370,6 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 - Permanently deletes nodes owned *exclusively* by that case.
 - Preserves nodes shared with other cases (removes the deleted `case_id` from their `case_ids` array).
 - Deletes case-specific transaction and communication edges.
+- Purges associated blockchain evidence blocks and recalculates the SHA-256 hash chain.
 - Click **"Delete"** on any row in the **Case Registry** tab to trigger this workflow.
+

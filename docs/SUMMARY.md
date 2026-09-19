@@ -39,13 +39,25 @@ SIH-189-completed/
 ├── Dockerfile                          # Container image definition for FastAPI backend
 ├── docker-compose.yml                  # Multi-container orchestration (Neo4j 5 Community + FastAPI backend)
 ├── pytest.ini                          # Test configuration (pythonpath=., testpaths, markers)
-├── requirements.txt                    # Pinned Python dependencies (FastAPI, Neo4j, Pydantic v2, GenAI)
-├── README.md                           # Quickstart guide, architecture diagrams, and API examples
+├── requirements.txt                    # Pinned Python dependencies (FastAPI, Neo4j, Pydantic v2, GenAI, pdfplumber)
+├── start_system.bat                    # 1-Click launcher for both Backend (8000) & Frontend (3000)
+├── run_backend.bat                     # 1-Click launcher for FastAPI backend
+├── run_frontend.bat                    # 1-Click launcher for Vite React frontend
+├── README.md                           # Quickstart showcase, architecture diagrams, and API examples
 ├── SUMMARY.md                          # Comprehensive technical system specification (this document)
 │
-├── app/                                # Core Application Package
+├── frontend/                           # React 19 + TypeScript + Tailwind CSS Frontend
+│   ├── src/                            # Modern SPA component architecture
+│   │   ├── components/                 # Sidebar, Overview, GraphExplorer, ShortestPath, etc.
+│   │   ├── services/api.ts             # Strongly typed REST client & interfaces
+│   │   ├── App.tsx                     # Top-level state coordinator & routing
+│   │   └── main.tsx                    # React 19 bootstrap
+│   ├── dist/                           # Compiled production build served by FastAPI
+│   └── package.json                    # Frontend dependencies & build commands
+│
+├── backend/                            # Core Intelligence Application Package
 │   ├── __init__.py                     # Package marker
-│   ├── main.py                         # FastAPI app entrypoint, CORS, global error handlers, dashboard mount
+│   ├── main.py                         # FastAPI app entrypoint, CORS, global error handlers, frontend mount
 │   ├── config.py                       # Pydantic Settings management (.env loader)
 │   ├── database.py                     # Neo4j driver pool lifecycle, sessions, and live health probe
 │   ├── logging_config.py               # Structured logging with automatic PII & credential masking
@@ -56,7 +68,7 @@ SIH-189-completed/
 │   │   ├── common.py                   # Audit fields, timestamps, and error response models
 │   │   ├── entity.py                   # Models for 13 canonical entities (Person, Phone, BankAccount, etc.)
 │   │   ├── event.py                    # Incremental event models (EventBatch, GraphEvent, EventProcessingResult)
-│   │   ├── ingestion_models.py         # Consolidated models for multi-file/CSV extraction
+│   │   ├── ingestion_models.py         # Consolidated models for multi-file/CSV/PDF extraction
 │   │   ├── insights.py                 # Forensic insight schemas and CaseAIInsightResponse
 │   │   ├── path.py                     # Shortest path response and AmbiguityCandidate models
 │   │   ├── rankings.py                 # Centrality ranking responses and metric schemas
@@ -69,8 +81,8 @@ SIH-189-completed/
 │   │   ├── gemini_service.py           # Forensic AI intelligence brief synthesis via Gemini 2.5 Flash
 │   │   ├── graph_service.py            # Subgraph retrieval, Entity 360 dossiers, case listing, and safe deletion
 │   │   ├── graph_writes.py             # Single source of truth for all Neo4j Cypher MERGE/UNWIND statements
-│   │   ├── ingestion_engine.py         # Multi-format heuristic & LLM parser for CDR/Bank CSVs and FIR text
-│   │   ├── ingestion_service.py        # Bulk idempotent case ingestion engine (MERGE and Replace modes)
+│   │   ├── ingestion_engine.py         # Multi-format heuristic & LLM parser for CDR/Bank CSVs, FIR PDFs & text
+│   │   ├── ingestion_service.py        # Atomic case ingestion engine with ACID transaction rollback
 │   │   ├── insights_engine.py          # Reference implementations for all 10 forensic insight detectors
 │   │   ├── path_service.py             # Shortest path traversal with case-insensitive name/alias resolution
 │   │   ├── ranking_service.py          # Degree, Weighted Degree, Cross-Case, and GDS centrality algorithms
@@ -90,21 +102,23 @@ SIH-189-completed/
 │   │   ├── path.py                     # GET /api/cases/shortest-path (Ambiguity-safe pathfinding)
 │   │   └── rankings.py                 # GET /api/cases/rankings (Suspect centrality rankings)
 │   │
-│   └── templates/                      # Frontend Presentation Layer
-│       └── index.html                  # "Atlas" Interactive Analyst Single-Page Application Dashboard
+│   └── templates/                      # Fallback Template
+│       └── index.html                  # Standalone fallback dashboard
 │
 ├── data/                               # Persistent Storage
 │   └── blockchain_ledger.json          # Cryptographic evidence chain-of-custody ledger
 │
 ├── docs/                               # Detailed Technical Guides
-│   └── EVENTS_API.md                   # Incremental Events API specification & integration contract
+│   ├── EVENTS_API.md                   # Incremental Events API specification & integration contract
+│   ├── SUMMARY.md                      # Comprehensive system summary (this document)
+│   └── SYSTEM_ARCHITECTURE_AND_OPERATIONS_GUIDE.md # Operations runbook & deployment guide
 │
-├── sample_data/                        # Realistic Forensic Verification Payloads
+├── dataset/                            # Realistic Forensic Verification Payloads
 │   ├── case_001_homicide.json          # Complete homicide case (FIR, CDR calls, bank transfers, CCTV)
 │   ├── case_002_fraud.json             # Corporate fraud case with cross-case overlapping entities
 │   └── envelope_sample.json            # Standard envelope wrapper example for automated pipelines
 │
-└── tests/                              # Automated Test Suite (235 Tests)
+└── tests/                              # Automated Test Suite (226 Tests)
     ├── conftest.py                     # Mock Neo4j driver, sessions, TestClient, test ledger isolation
     ├── fixtures/                       # Deterministic test payloads
     │   ├── case_edge_batching.json
@@ -114,6 +128,7 @@ SIH-189-completed/
     │   ├── test_batched_relationship_writers.py
     │   ├── test_blockchain_ledger.py
     │   ├── test_case_delete.py
+    │   ├── test_data_ingestion_pipeline_audit.py
     │   ├── test_delta_processor.py
     │   ├── test_entity_search.py
     │   ├── test_event_model.py
@@ -123,7 +138,9 @@ SIH-189-completed/
     │   ├── test_scoped_detectors.py
     │   └── test_shortest_path.py
     ├── integration/                    # API & Ingestion Pipeline Tests
+    │   ├── test_case_identity_ingestion_audit.py
     │   ├── test_events_api.py
+    │   ├── test_freetext_person_ingestion_audit.py
     │   ├── test_health_and_reset.py
     │   ├── test_ingest_merge.py
     │   ├── test_ingest_ordering.py
@@ -134,10 +151,11 @@ SIH-189-completed/
         ├── test_equivalence_harness.py
         ├── test_live_neo4j_delta_processor.py
         ├── test_live_neo4j_events_api.py
-        ├── test_live_neo4j_legacy_ingest_casedata.py
+        ├── test_live_neo4j_legacy_ingest.py
         ├── test_live_neo4j_scoped_detectors.py
         ├── test_live_neo4j_step0.py
         └── test_live_neo4j_step1b.py
+
 ```
 
 ---

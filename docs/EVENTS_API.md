@@ -13,7 +13,7 @@ API -> EventBatch -> DeltaProcessor -> graph_writes (single source of write Cyph
 |---|---|
 | Method / path | `POST /api/events/batch` |
 | Tag (OpenAPI) | `Incremental Events` |
-| Request body | `EventBatch` (`app/models/event.py`) |
+| Request body | `EventBatch` (`backend/models/event.py`) |
 | Response body | `EventProcessingResult` |
 | Success codes | `201 Created` — at least one primary node created and nothing matched; `200 OK` otherwise (same rule as `/api/cases/ingest`) |
 | Max batch size | **5000 events** (`min 1`) |
@@ -30,7 +30,8 @@ API -> EventBatch -> DeltaProcessor -> graph_writes (single source of write Cyph
 }
 ```
 `event_type` is the discriminator of a closed tagged union. Envelope and batch use `extra="forbid"`.
-Payloads are the **same Pydantic models bulk ingestion uses** (`app/models/entity.py`, `app/models/relationship.py`).
+Payloads are the **same Pydantic models bulk ingestion uses** (`backend/models/entity.py`, `backend/models/relationship.py`).
+
 
 ### Supported event types (15)
 
