@@ -1250,7 +1250,17 @@ class GraphService:
         WHERE (n:Case AND (n.case_id = $case_id OR n.id = $case_id))
            OR (size(n.case_ids) = 1 AND $case_id IN n.case_ids)
            OR n.case_ids = [$case_id]
-           OR ((n)<-[:INVOLVES]-(c:Case) AND (c.case_id = $case_id OR c.id = $case_id) AND NOT (n)<-[:INVOLVES]-(:Case WHERE case_id <> $case_id AND id <> $case_id))
+           OR (
+             EXISTS {
+               MATCH (n)<-[:INVOLVES]-(c:Case)
+               WHERE c.case_id = $case_id OR c.id = $case_id
+             }
+             AND NOT EXISTS {
+               MATCH (n)<-[:INVOLVES]-(other:Case)
+               WHERE (other.case_id IS NOT NULL AND other.case_id <> $case_id)
+                  OR (other.id IS NOT NULL AND other.id <> $case_id)
+             }
+           )
         OPTIONAL MATCH (n)-[r]-()
         RETURN count(DISTINCT n) AS nodes_removed, count(DISTINCT r) AS exclusive_rels
         """
@@ -1287,7 +1297,17 @@ class GraphService:
         WHERE (n:Case AND (n.case_id = $case_id OR n.id = $case_id))
            OR (size(n.case_ids) = 1 AND $case_id IN n.case_ids)
            OR n.case_ids = [$case_id]
-           OR ((n)<-[:INVOLVES]-(c:Case) AND (c.case_id = $case_id OR c.id = $case_id) AND NOT (n)<-[:INVOLVES]-(:Case WHERE case_id <> $case_id AND id <> $case_id))
+           OR (
+             EXISTS {
+               MATCH (n)<-[:INVOLVES]-(c:Case)
+               WHERE c.case_id = $case_id OR c.id = $case_id
+             }
+             AND NOT EXISTS {
+               MATCH (n)<-[:INVOLVES]-(other:Case)
+               WHERE (other.case_id IS NOT NULL AND other.case_id <> $case_id)
+                  OR (other.id IS NOT NULL AND other.id <> $case_id)
+             }
+           )
         DETACH DELETE n
         """
 

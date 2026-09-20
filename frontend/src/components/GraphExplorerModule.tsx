@@ -102,21 +102,54 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
       const isPhone = n.labels?.includes('Phone');
       const isTower = n.labels?.includes('CellTower');
 
-      let nodeSize = 13;
+      let nodeSize = 22;
       let nodeShape = 'dot';
       let nodeBg = (n.labels?.[0] && LABEL_COLOR[n.labels[0]]) || '#94a3b8';
 
       if (graphType === 'cdr') {
-        if (isPhone) { nodeSize = 18; nodeBg = '#f97316'; }
-        else if (isTower) { nodeSize = 20; nodeShape = 'triangle'; nodeBg = '#06b6d4'; }
+        if (isPhone) { nodeSize = 28; nodeBg = '#f97316'; }
+        else if (isTower) { nodeSize = 28; nodeShape = 'triangle'; nodeBg = '#06b6d4'; }
       } else if (graphType === 'person') {
-        nodeSize = 20;
-        nodeBg = '#3b82f6';
+        nodeSize = isPerson ? 30 : (isPhone ? 24 : 22);
+        if (isPerson) nodeBg = '#3b82f6';
       } else if (graphType === 'financial') {
-        nodeSize = 18;
-        nodeBg = '#10b981';
+        nodeSize = n.labels?.includes('BankAccount') ? 28 : 22;
+        if (n.labels?.includes('BankAccount')) nodeBg = '#10b981';
       } else {
-        nodeSize = isCase ? 22 : (isPerson ? 16 : 13);
+        if (isCase) {
+          nodeSize = 32;
+          nodeBg = '#6366f1';
+        } else if (isPerson) {
+          nodeSize = 26;
+          nodeBg = '#3b82f6';
+        } else if (isPhone) {
+          nodeSize = 24;
+          nodeBg = '#f97316';
+        } else if (n.labels?.includes('BankAccount')) {
+          nodeSize = 24;
+          nodeBg = '#10b981';
+        } else if (n.labels?.includes('Vehicle')) {
+          nodeSize = 24;
+          nodeBg = '#ec4899';
+        } else if (isTower) {
+          nodeSize = 26;
+          nodeShape = 'triangle';
+          nodeBg = '#06b6d4';
+        } else if (n.labels?.includes('Location')) {
+          nodeSize = 24;
+          nodeBg = '#84cc16';
+        } else if (n.labels?.includes('SocialHandle')) {
+          nodeSize = 22;
+          nodeBg = '#8b5cf6';
+        } else if (n.labels?.includes('IPAddress')) {
+          nodeSize = 22;
+          nodeBg = '#f43f5e';
+        } else if (n.labels?.includes('SourceRecord') || n.labels?.includes('Document')) {
+          nodeSize = 20;
+          nodeBg = '#64748b';
+        } else {
+          nodeSize = 22;
+        }
       }
 
       // Resolve associated person for phone if present
@@ -201,6 +234,8 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         }
       }
 
+      const fontSize = isCase ? 14 : (isPerson ? 13 : (isPhone ? 12 : 11.5));
+
       nodes.push({
         id: n.id,
         label: nodeLabel,
@@ -208,21 +243,28 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         title: tooltipLines.join('\n'),
         shape: nodeShape,
         size: nodeSize,
-        borderWidth: 2,
-        borderWidthSelected: 3.5,
+        borderWidth: isCase ? 3.5 : 2.5,
+        borderWidthSelected: 4.5,
+        shadow: {
+          enabled: true,
+          color: isLight ? 'rgba(0, 0, 0, 0.16)' : 'rgba(0, 0, 0, 0.55)',
+          size: 7,
+          x: 2,
+          y: 2
+        },
         color: {
           background: nodeBg,
-          border: isLight ? '#ffffff' : '#1e293b',
+          border: isLight ? '#ffffff' : '#0f172a',
           highlight: { background: nodeBg, border: isLight ? '#0284c7' : '#38bdf8' },
           hover: { background: nodeBg, border: isLight ? '#0284c7' : '#38bdf8' }
         },
         font: {
-          color: textColor,
-          size: (graphType === 'person' || isCase) ? 12 : (isPerson || isPhone ? 10 : 9),
+          color: isLight ? '#0f172a' : '#f8fafc',
+          size: fontSize,
           face: 'Inter, system-ui, -apple-system, sans-serif',
-          vadjust: 3,
-          strokeWidth: isLight ? 2 : 0,
-          strokeColor: isLight ? '#ffffff' : 'transparent'
+          vadjust: 4,
+          strokeWidth: isLight ? 3 : 2.5,
+          strokeColor: isLight ? '#ffffff' : '#0f172a'
         }
       });
     });
@@ -273,12 +315,12 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         edgeTitle += `\nAmount: ₹${Math.round(Number(e.properties.amount)).toLocaleString()}`;
       }
 
-      // Keep edges sleek, subtle, clean and crisp without bold clutter (matching reference image)
-      let edgeWidth = 0.85;
+      // Keep edges sleek, clear and crisp
+      let edgeWidth = 1.3;
       if (callCount > 1) {
-        edgeWidth = Math.min(0.95 + Math.log2(callCount) * 0.2, 1.8);
+        edgeWidth = Math.min(1.5 + Math.log2(callCount) * 0.3, 2.8);
       } else if (txCount > 1) {
-        edgeWidth = Math.min(0.95 + Math.log2(txCount) * 0.2, 1.8);
+        edgeWidth = Math.min(1.5 + Math.log2(txCount) * 0.3, 2.8);
       }
 
       edges.push({
@@ -288,28 +330,29 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         label: label,
         title: edgeTitle,
         width: edgeWidth,
-        selectionWidth: 1.2,
-        hoverWidth: 1.2,
+        selectionWidth: 2.0,
+        hoverWidth: 2.0,
         physics: !isCaseLink,
         arrows: {
           to: {
             enabled: true,
-            scaleFactor: 0.35
+            scaleFactor: 0.6
           }
         },
         color: {
           color: isCaseLink
-            ? (isLight ? 'rgba(2, 132, 199, 0.3)' : 'rgba(56, 189, 248, 0.3)')
+            ? (isLight ? 'rgba(2, 132, 199, 0.45)' : 'rgba(56, 189, 248, 0.45)')
             : (graphType === 'person' ? '#93c5fd' : edgeColor),
           highlight: isLight ? '#0284c7' : '#38bdf8',
           hover: isLight ? '#0284c7' : '#38bdf8'
         },
         dashes: isCaseLink,
         font: {
-          color: isLight ? '#334155' : '#cbd5e1',
-          size: 8.5,
+          color: isLight ? '#1e293b' : '#e2e8f0',
+          size: 10,
           face: 'Inter, system-ui, sans-serif',
-          strokeWidth: 0,
+          strokeWidth: isLight ? 2 : 0,
+          strokeColor: isLight ? '#ffffff' : 'transparent',
           background: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(15, 23, 42, 0.94)',
           align: 'horizontal'
         },
@@ -346,9 +389,9 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
           fit: true
         }
       },
-      nodes: { borderWidth: 2 },
-      edges: { width: 1.0, selectionWidth: 1.4, hoverWidth: 1.4 },
-      interaction: { hover: true, tooltipDelay: 100, navigationButtons: true, keyboard: true }
+      nodes: { borderWidth: 2.5 },
+      edges: { width: 1.3, selectionWidth: 2.0, hoverWidth: 2.0 },
+      interaction: { hover: true, tooltipDelay: 100, navigationButtons: true, keyboard: true, zoomView: true, dragView: true }
     });
 
     net.on('click', (p: any) => {
@@ -361,11 +404,15 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
 
     net.once('stabilizationIterationsDone', () => {
       // Keep physics alive with gentle forces for continuous to-and-fro oscillation
-      net.setOptions({ physics: { enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -30, centralGravity: 0.002, springLength: 200, springConstant: 0.01, damping: 0.4, avoidOverlap: 0.8 }, maxVelocity: 8, minVelocity: 0.3 } });
+      if (physicsEnabled) {
+        net.setOptions({ physics: { enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -35, centralGravity: 0.002, springLength: 220, springConstant: 0.012, damping: 0.45, avoidOverlap: 1.0 }, maxVelocity: 8, minVelocity: 0.3 } });
+      }
     });
     net.once('stabilized', () => {
       // Keep physics alive with gentle forces for continuous to-and-fro oscillation
-      net.setOptions({ physics: { enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -30, centralGravity: 0.002, springLength: 200, springConstant: 0.01, damping: 0.4, avoidOverlap: 0.8 }, maxVelocity: 8, minVelocity: 0.3 } });
+      if (physicsEnabled) {
+        net.setOptions({ physics: { enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -35, centralGravity: 0.002, springLength: 220, springConstant: 0.012, damping: 0.45, avoidOverlap: 1.0 }, maxVelocity: 8, minVelocity: 0.3 } });
+      }
     });
 
     networkRef.current = net;
