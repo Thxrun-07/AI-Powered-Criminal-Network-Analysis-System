@@ -14,11 +14,19 @@ def get_graph(
     case_id: Optional[str] = Query(None, description="Filter by case ID"),
     node_labels: Optional[List[str]] = Query(None, description="Filter by node labels"),
     core_only: bool = Query(False, description="Restrict to core target suspects and owned assets"),
+    graph_type: str = Query("all", description="Filter graph by extraction type: all, cdr, person, financial"),
     limit: int = Query(1000, ge=1, le=5000, description="Max elements to fetch")
 ):
     try:
         with db.get_session() as session:
-            return GraphService.get_subgraph(session, case_id=case_id, node_labels=node_labels, core_only=core_only, limit=limit)
+            return GraphService.get_subgraph(
+                session,
+                case_id=case_id,
+                node_labels=node_labels,
+                core_only=core_only,
+                graph_type=graph_type,
+                limit=limit
+            )
     except ServiceUnavailable as se:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(se))
 

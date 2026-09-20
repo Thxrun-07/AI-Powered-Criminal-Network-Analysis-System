@@ -89,6 +89,7 @@ export interface AiChatMessage {
   model?: string;
   error?: boolean;
   chips?: string[];
+  extracted_graph_type?: string;
 }
 
 export interface PathResult {
@@ -210,20 +211,22 @@ export function esc(s: unknown): string {
 }
 
 export const LABEL_COLOR: Record<string, string> = {
-  Person: '#6366f1',
-  Phone: '#00d2ff',
+  Person: '#3b82f6',
+  Phone: '#f97316',
   BankAccount: '#10b981',
-  Vehicle: '#f59e0b',
-  SocialHandle: '#a855f7',
+  Vehicle: '#ec4899',
+  SocialHandle: '#8b5cf6',
   IPAddress: '#f43f5e',
-  Location: '#fb7185',
-  CellTower: '#14b8a6',
-  FIR: '#ec4899',
-  PriorCase: '#94a3b8',
-  Case: '#38bdf8',
+  Location: '#84cc16',
+  CellTower: '#06b6d4',
+  FIR: '#ef4444',
+  Crime: '#ef4444',
+  PriorCase: '#64748b',
+  Case: '#6366f1',
   Transaction: '#10b981',
   SourceRecord: '#64748b',
-  Organization: '#3b82f6'
+  Organization: '#059669',
+  Document: '#64748b'
 };
 
 export function getNodeLevel(labels?: string[]): number {
@@ -255,7 +258,8 @@ export const NAV: NavOption[] = [
   { id: 'rankings', label: 'Rankings', icon: 'M3 17l4-4 4 4 5-5 4 4' },
   { id: 'insights', label: 'Pattern Insights', icon: 'M12 3l1.9 5.6L19 10l-5.1 1.9L12 17.5l-1.9-5.6L5 10l5.1-1.4L12 3Z' },
   { id: 'blockchain', label: 'Chain of Custody', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' },
-  { id: 'cases', label: 'Case Registry', icon: 'M3 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z' }
+  { id: 'cases', label: 'Case Registry', icon: 'M3 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z' },
+  { id: 'ingest', label: 'Data Ingestion', icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' }
 ];
 
 export const TITLES: Record<string, [string, string]> = {
@@ -266,5 +270,6 @@ export const TITLES: Record<string, [string, string]> = {
   rankings: ['Centrality Rankings', 'Degree, PageRank, betweenness, and cross-case relevance'],
   insights: ['Forensic Insights', 'Automated graph intelligence and anomaly detection'],
   blockchain: ['Chain of Custody Ledger', 'Cryptographic SHA-256 Merkle block proof & anti-tampering evidence verification'],
-  cases: ['Case Registry', 'Manage cases, entity breakdowns, case ingestion, and deletion']
+  cases: ['Case Registry', 'Manage cases, entity breakdowns, case ingestion, and deletion'],
+  ingest: ['Data Ingestion', 'Multi-source document and evidence ingestion engine']
 };

@@ -419,7 +419,37 @@ INSTRUCTIONS:
         top_phone = phones[0]["phone"] if phones else "the active subscriber line"
         top_account = accounts[0]["account"] if accounts else "the primary account"
 
-        if any(w in q_lower for w in ["who", "kingpin", "leader", "suspect", "person", "target", "main"]):
+        extracted_graph_type = None
+
+        # Check for specific extraction commands
+        if any(w in q_lower for w in ["extract only cdr", "only cdr", "cdr graph", "extract cdr", "phone graph", "telecom graph", "call graph"]):
+            extracted_graph_type = "cdr"
+            ans = f"• **CDR Telecommunications Graph Extracted**: Switched topology to display exclusively telephone nodes, caller-callee links, call durations, and connected cell towers.\n\n" \
+                  f"• **Active Infrastructure**: Monitoring {len(phones)} telephone lines within {case_name}. Primary telecommunication hub is **{top_phone}**.\n\n" \
+                  f"• **Clutter Filtered Out**: Bank accounts, corporate records, locations, and extraneous entity nodes have been excluded from the view to provide a pristine telecommunication analysis canvas.\n\n" \
+                  f"• **Investigative Action**: Review bidirectional call frequencies and subpoena tower dumps for lines connecting to {top_phone}."
+            findings = ["Extracted: CDR Telecommunications Graph", f"Primary Hub: {top_phone}", f"Monitored Phones: {len(phones)}", "Extraneous entities filtered"]
+        elif any(w in q_lower for w in ["person graph", "extract person", "people graph", "connecting person", "suspect graph", "only person", "persons graph"]):
+            extracted_graph_type = "person"
+            ans = f"• **Person-to-Person Syndicate Graph Extracted**: Switched topology to display exclusively human suspects, victims, and syndicate operatives with direct and synthesized associations.\n\n" \
+                  f"• **Syndicate Core**: Identified {len(people)} key individuals in this investigation. The operational center is anchored by **{top_person}** ({top_person_deg} direct links).\n\n" \
+                  f"• **Synthesized Connections**: Edges represent direct known associations, co-accused status, and phone communication routes between their registered devices.\n\n" \
+                  f"• **Clutter Filtered Out**: Hundreds of intermediate phone numbers, bank accounts, and document records have been hidden, giving a clean overview of who reports to whom.\n\n" \
+                  f"• **Investigative Action**: Focus surveillance and interrogation on the direct links connecting {top_person} to peripheral operatives."
+            findings = ["Extracted: Person-to-Person Syndicate Graph", f"Core Anchor: {top_person}", f"Total Suspects: {len(people)}", "Device/Account clutter removed"]
+        elif any(w in q_lower for w in ["financial graph", "money graph", "bank graph", "extract finance", "extract bank", "transaction graph"]):
+            extracted_graph_type = "financial"
+            ans = f"• **Financial Money Flow Graph Extracted**: Switched topology to display exclusively bank accounts, financial nodes, and fund transfer trails.\n\n" \
+                  f"• **Financial Footprint**: {len(accounts)} monitored bank accounts. Main node is **{top_account}**.\n\n" \
+                  f"• **Clutter Filtered Out**: Non-financial nodes hidden to isolate the money laundering chain.\n\n" \
+                  f"• **Investigative Action**: Issue freezing orders under Section 102 CrPC on target accounts."
+            findings = ["Extracted: Financial Flow Graph", f"Target Account: {top_account}", "Non-financial nodes filtered"]
+        elif any(w in q_lower for w in ["full graph", "all graph", "reset graph", "entire graph", "show all"]):
+            extracted_graph_type = "all"
+            ans = f"• **Full Ecosystem Graph Restored**: All entity types (People, Phones, Accounts, Vehicles, Locations, Cases) and relationships are now rendered.\n\n" \
+                  f"• **Investigative Overview**: Complete multi-domain intelligence view restored across {case_name}."
+            findings = ["Full Ecosystem Restored", "All entity categories visible"]
+        elif any(w in q_lower for w in ["who", "kingpin", "leader", "suspect", "person", "target", "main"]):
             ans = f"• **Primary Target / Hub**: **{top_person}** is the most central figure in this subgraph with {top_person_deg} direct associations across communication and financial nodes.\n\n" \
                   f"• **Associated Suspects**: {', '.join([p['name'] for p in people[1:4] if p.get('name')]) or 'No secondary targets recorded'}.\n\n" \
                   f"• **Inference**: High degree centrality indicates {top_person} coordinates operations rather than executing field actions alone.\n\n" \
@@ -454,6 +484,7 @@ INSTRUCTIONS:
         return GraphAIChatResponse(
             answer=ans,
             key_findings=findings,
+            extracted_graph_type=extracted_graph_type,
             ai_model="gemini-2.5-flash (Demonstration Engine)"
         )
 

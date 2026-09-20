@@ -165,6 +165,7 @@ def delete_case(
     confirm: bool = Query(False, description="Explicit confirmation required to delete case"),
     payload: Optional[CaseDeleteRequest] = Body(None, description="Optional request body with confirmation")
 ):
+    clean_case_id = case_id.strip()
     is_confirmed = confirm or (payload is not None and payload.confirm)
     if not is_confirmed:
         raise HTTPException(
@@ -173,7 +174,7 @@ def delete_case(
         )
     try:
         with db.get_session() as session:
-            result = GraphService.delete_case(session, case_id)
+            result = GraphService.delete_case(session, clean_case_id)
             if result is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,

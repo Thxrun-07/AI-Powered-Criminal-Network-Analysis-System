@@ -4,6 +4,10 @@ cd /d "%~dp0"
 echo ========================================================
 echo  Launching Full Stack Criminal Network Analysis System
 echo ========================================================
+if not exist "%~dp0frontend\node_modules\" (
+    echo [Setup] Installing frontend dependencies...
+    cmd /c "cd /d %~dp0frontend && npm install"
+)
 echo 1. Launching Backend on http://localhost:8000 ...
 start "Case Graph Backend" cmd /k "cd /d %~dp0 && python -m uvicorn backend.main:app --reload --port 8000"
 timeout /t 3 /nobreak >nul

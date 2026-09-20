@@ -549,10 +549,53 @@ tbody tr:hover td { color: var(--text); }
   background: var(--surface); border: 1px solid var(--border-strong); box-shadow: var(--shadow-soft);
 }
 .modal h3 { font-weight: 800; font-size: 20px; letter-spacing: -.4px; margin-bottom: 16px; }
-.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; margin-top: 8px; }
-.kv div { background: var(--bg1); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); }
-.kv .k { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .6px; font-weight: 700; }
-.kv .v { font-size: 13.5px; margin-top: 4px; color: var(--text); word-break: break-word; }
+/* Professional Entity Properties Specification Table */
+.entity-props-container {
+  width: 100%;
+  margin-top: 10px;
+}
+.entity-props-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+.entity-props-table tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+.entity-props-table tr:last-child {
+  border-bottom: none;
+}
+.entity-props-table tr:hover {
+  background: var(--surface-hover);
+}
+.entity-props-table td.prop-key {
+  padding: 8px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  width: 38%;
+  border-right: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.entity-props-table td.prop-val {
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: var(--mono);
+  word-break: break-word;
+}
+
+/* Fixed key-value grid without nested box bug */
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-top: 8px; }
+.kv > div { background: var(--bg1); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); }
+.kv .k { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .5px; font-weight: 700; background: none !important; border: none !important; padding: 0 !important; }
+.kv .v { font-size: 13px; margin-top: 2px; color: var(--text); word-break: break-word; background: none !important; border: none !important; padding: 0 !important; }
 
 /* Confirmation Dialog Inside Modal */
 .confirm-box { text-align: left; }

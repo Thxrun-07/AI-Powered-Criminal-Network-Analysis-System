@@ -67,6 +67,7 @@ class GraphAIChatRequest(BaseModel):
 class GraphAIChatResponse(BaseModel):
     answer: str = Field(..., description="AI investigative response to the question")
     key_findings: List[str] = Field(default_factory=list, description="Key extracted entity names or bullet points")
+    extracted_graph_type: Optional[str] = Field(default=None, description="Active extracted subgraph mode: cdr, person, financial, or all")
     ai_model: str = Field(default="gemini-2.5-flash", description="AI model used for response")
     generated_at: str = Field(default_factory=get_current_iso_time, description="Timestamp of generation")
 

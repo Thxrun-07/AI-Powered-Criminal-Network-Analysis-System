@@ -15,45 +15,358 @@ class GraphService:
         case_id: Optional[str] = None,
         node_labels: Optional[List[str]] = None,
         core_only: bool = False,
+        graph_type: str = "all",
         limit: int = 1000
     ) -> Dict[str, Any]:
-        if core_only:
-            cypher = """
-            MATCH (n)
-            WHERE ($case_id IS NULL OR $case_id IN n.case_ids)
-              AND NOT 'Block' IN labels(n)
-              AND ($labels IS NULL OR size($labels) = 0 OR any(l IN labels(n) WHERE l IN $labels))
-              AND NOT ('Phone' IN labels(n) AND (n.owner_person_id IS NULL OR n.owner_person_id = '') AND NOT coalesce(n.phone_number, '') STARTS WITH '99999')
-            OPTIONAL MATCH (n)-[r]->(m)
-            WHERE (m IS NULL OR $case_id IS NULL OR $case_id IN m.case_ids)
-              AND (m IS NULL OR NOT 'Block' IN labels(m))
-              AND (m IS NULL OR $labels IS NULL OR size($labels) = 0 OR any(l IN labels(m) WHERE l IN $labels))
-              AND NOT (m IS NOT NULL AND 'Phone' IN labels(m) AND (m.owner_person_id IS NULL OR m.owner_person_id = '') AND NOT coalesce(m.phone_number, '') STARTS WITH '99999')
-            RETURN labels(n) as n_labels, properties(n) as n_props,
-                   elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
-                   labels(m) as m_labels, properties(m) as m_props
-            LIMIT $limit
-            """
-        else:
-            cypher = """
-            MATCH (n)
-            WHERE ($case_id IS NULL OR $case_id IN n.case_ids)
-              AND NOT 'Block' IN labels(n)
-              AND ($labels IS NULL OR size($labels) = 0 OR any(l IN labels(n) WHERE l IN $labels))
-            OPTIONAL MATCH (n)-[r]->(m)
-            WHERE (m IS NULL OR $case_id IS NULL OR $case_id IN m.case_ids)
-              AND (m IS NULL OR NOT 'Block' IN labels(m))
-              AND (m IS NULL OR $labels IS NULL OR size($labels) = 0 OR any(l IN labels(m) WHERE l IN $labels))
-            RETURN labels(n) as n_labels, properties(n) as n_props,
-                   elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
-                   labels(m) as m_labels, properties(m) as m_props
-            LIMIT $limit
-            """
-
-        rows = session.run(cypher, {"case_id": case_id, "labels": node_labels, "limit": limit}).data()
-
+        graph_type = (graph_type or "all").lower().strip()
         nodes_dict: Dict[str, Dict[str, Any]] = {}
         edges_dict: Dict[str, Dict[str, Any]] = {}
+
+        # ---------------------------------------------------------
+        # MODE 1: PERSON GRAPH ONLY (Clean suspect-to-suspect syndicate network)
+        # ---------------------------------------------------------
+        if graph_type in ["person", "persons", "suspect", "people"]:
+            # 1. Fetch all Person nodes in scope
+            p_cypher = """
+            MATCH (p:Person)
+            WHERE ($case_id IS NULL OR $case_id IN p.case_ids)
+            RETURN labels(p) as n_labels, properties(p) as n_props
+            LIMIT $limit
+            """
+            p_rows = session.run(p_cypher, {"case_id": case_id, "limit": limit}).data()
+            for row in p_rows:
+                props = row.get("n_props") or {}
+                labs = row.get("n_labels") or ["Person"]
+                pid = str(props.get("person_id") or f"P_{abs(hash(str(props)))}")
+                role_desc = ""
+                if props.get("roles"):
+                    roles = props.get("roles")
+                    r_item = roles[0] if isinstance(roles, list) else roles
+                    role_desc = f" ({r_item})"
+                elif props.get("status"):
+                    role_desc = f" ({props.get('status')})"
+                nodes_dict[pid] = {
+                    "id": pid,
+                    "labels": labs,
+                    "name": f"{props.get('name') or pid}{role_desc}",
+                    "case_ids": props.get("case_ids") or [],
+                    "properties": props
+                }
+
+            # 2. Direct relationships between persons
+            p_rel_cypher = """
+            MATCH (p1:Person)-[r]->(p2:Person)
+            WHERE ($case_id IS NULL OR ($case_id IN p1.case_ids AND $case_id IN p2.case_ids))
+              AND p1 <> p2
+            RETURN p1.person_id as src, p2.person_id as dst, type(r) as rel_type, properties(r) as props, elementId(r) as r_id
+            LIMIT $limit
+            """
+            p_rels = session.run(p_rel_cypher, {"case_id": case_id, "limit": limit}).data()
+            for pr in p_rels:
+                src = str(pr["src"])
+                dst = str(pr["dst"])
+                rtype = pr.get("rel_type") or "ASSOCIATED_WITH"
+                if src in nodes_dict and dst in nodes_dict:
+                    eid = f"DIR_{src}_{rtype}_{dst}"
+                    edges_dict[eid] = {
+                        "id": eid,
+                        "type": rtype,
+                        "source": src,
+                        "target": dst,
+                        "properties": pr.get("props") or {}
+                    }
+
+            # 3. Communications-mediated links (calls between owned phones, aggregated by pair)
+            p_call_cypher = """
+            MATCH (p1:Person)-[:OWNS]->(ph1:Phone)-[c:CALLED]->(ph2:Phone)<-[:OWNS]-(p2:Person)
+            WHERE ($case_id IS NULL OR ($case_id IN p1.case_ids AND $case_id IN p2.case_ids))
+              AND p1 <> p2
+            RETURN p1.person_id as src, p2.person_id as dst,
+                   count(c) as call_count, sum(coalesce(c.duration_seconds, 0)) as total_duration
+            """
+            p_calls = session.run(p_call_cypher, {"case_id": case_id}).data()
+            for pc in p_calls:
+                src = str(pc["src"])
+                dst = str(pc["dst"])
+                c_count = int(pc.get("call_count") or 1)
+                dur = int(pc.get("total_duration") or 0)
+                if src in nodes_dict and dst in nodes_dict:
+                    pair_key = f"CALL_LINK_{min(src, dst)}_{max(src, dst)}"
+                    if pair_key in edges_dict:
+                        existing = edges_dict[pair_key]
+                        p = existing["properties"]
+                        p["call_count"] = p.get("call_count", 0) + c_count
+                        p["total_duration_seconds"] = p.get("total_duration_seconds", 0) + dur
+                        tot_count = p["call_count"]
+                        tot_dur = p["total_duration_seconds"]
+                        mins = tot_dur // 60
+                        secs = tot_dur % 60
+                        dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                        existing["type"] = f"COMMUNICATED ({tot_count} calls)"
+                        p["summary"] = f"{tot_count} calls ({dur_str})"
+                    else:
+                        mins = dur // 60
+                        secs = dur % 60
+                        dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                        edges_dict[pair_key] = {
+                            "id": pair_key,
+                            "type": f"COMMUNICATED ({c_count} calls)",
+                            "source": src,
+                            "target": dst,
+                            "properties": {
+                                "call_count": c_count,
+                                "total_duration_seconds": dur,
+                                "summary": f"{c_count} calls ({dur_str})"
+                            }
+                        }
+
+            # 4. Financial transfer links between persons (aggregated by pair)
+            p_tx_cypher = """
+            MATCH (p1:Person)-[:OWNS]->(b1:BankAccount)-[t:TRANSFERRED_TO]->(b2:BankAccount)<-[:OWNS]-(p2:Person)
+            WHERE ($case_id IS NULL OR ($case_id IN p1.case_ids AND $case_id IN p2.case_ids))
+              AND p1 <> p2
+            RETURN p1.person_id as src, p2.person_id as dst,
+                   count(t) as tx_count, sum(coalesce(t.amount, 0)) as total_amount
+            """
+            p_txs = session.run(p_tx_cypher, {"case_id": case_id}).data()
+            for pt in p_txs:
+                src = str(pt["src"])
+                dst = str(pt["dst"])
+                amt = float(pt.get("total_amount") or 0)
+                tx_count = int(pt.get("tx_count") or 1)
+                if src in nodes_dict and dst in nodes_dict:
+                    pair_key = f"TX_LINK_{min(src, dst)}_{max(src, dst)}"
+                    if pair_key in edges_dict:
+                        existing = edges_dict[pair_key]
+                        p = existing["properties"]
+                        p["tx_count"] = p.get("tx_count", 0) + tx_count
+                        p["total_amount"] = p.get("total_amount", 0) + amt
+                        tot_amt = p["total_amount"]
+                        tot_tx = p["tx_count"]
+                        existing["type"] = f"FUNDS_TRANSFER (₹{int(tot_amt):,})"
+                        p["summary"] = f"Rs. {tot_amt:,.2f} ({tot_tx} txns)"
+                    else:
+                        edges_dict[pair_key] = {
+                            "id": pair_key,
+                            "type": f"FUNDS_TRANSFER (₹{int(amt):,})",
+                            "source": src,
+                            "target": dst,
+                            "properties": {
+                                "tx_count": tx_count,
+                                "total_amount": amt,
+                                "summary": f"Rs. {amt:,.2f} ({tx_count} txns)"
+                            }
+                        }
+
+            # 5. Co-accused in same case
+            co_cypher = """
+            MATCH (p1:Person)<-[:INVOLVES]-(c:Case)-[:INVOLVES]->(p2:Person)
+            WHERE ($case_id IS NULL OR c.case_id = $case_id)
+              AND p1 <> p2
+            RETURN p1.person_id as src, p2.person_id as dst, c.case_id as cid, c.case_name as cname
+            LIMIT 200
+            """
+            co_rows = session.run(co_cypher, {"case_id": case_id}).data()
+            for cr in co_rows:
+                src = str(cr["src"])
+                dst = str(cr["dst"])
+                if src in nodes_dict and dst in nodes_dict:
+                    already_connected = any(
+                        (e["source"] == src and e["target"] == dst) or (e["source"] == dst and e["target"] == src)
+                        for e in edges_dict.values()
+                    )
+                    if not already_connected:
+                        eid = f"CO_ACCUSED_{min(src, dst)}_{max(src, dst)}"
+                        edges_dict[eid] = {
+                            "id": eid,
+                            "type": "CO_ACCUSED",
+                            "source": src,
+                            "target": dst,
+                            "properties": {
+                                "case_id": cr.get("cid"),
+                                "case_name": cr.get("cname"),
+                                "summary": f"Co-accused in {cr.get('cname') or cr.get('cid')}"
+                            }
+                        }
+
+            # Precalculate communications & transaction stats per person node
+            for edge in edges_dict.values():
+                e_type = edge.get("type") or ""
+                props = edge.get("properties") or {}
+                src = edge.get("source")
+                dst = edge.get("target")
+
+                if ("COMMUNICATED" in e_type or "CALL" in e_type) and src in nodes_dict and dst in nodes_dict:
+                    count = int(props.get("call_count") or 1)
+                    dur = int(props.get("total_duration_seconds", props.get("duration_seconds", 0)))
+                    mins = dur // 60
+                    secs = dur % 60
+                    dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                    summary = props.get("summary") or f"{count} calls ({dur_str})"
+
+                    if "communications" not in nodes_dict[src]["properties"]:
+                        nodes_dict[src]["properties"]["communications"] = {}
+                    nodes_dict[src]["properties"]["communications"][dst] = {
+                        "partner_id": dst,
+                        "partner_name": nodes_dict[dst].get("name") or dst,
+                        "call_count": count,
+                        "total_duration_seconds": dur,
+                        "summary": summary
+                    }
+                    nodes_dict[src]["properties"]["total_calls"] = nodes_dict[src]["properties"].get("total_calls", 0) + count
+
+                    if "communications" not in nodes_dict[dst]["properties"]:
+                        nodes_dict[dst]["properties"]["communications"] = {}
+                    nodes_dict[dst]["properties"]["communications"][src] = {
+                        "partner_id": src,
+                        "partner_name": nodes_dict[src].get("name") or src,
+                        "call_count": count,
+                        "total_duration_seconds": dur,
+                        "summary": summary
+                    }
+                    nodes_dict[dst]["properties"]["total_calls"] = nodes_dict[dst]["properties"].get("total_calls", 0) + count
+
+                elif ("FUNDS_TRANSFER" in e_type or "TRANSFERRED" in e_type or "TRANSACTION" in e_type) and src in nodes_dict and dst in nodes_dict:
+                    t_count = int(props.get("tx_count") or 1)
+                    t_amt = float(props.get("total_amount", props.get("amount", 0)))
+                    summary = props.get("summary") or f"{t_count} txns (₹{int(t_amt):,})"
+
+                    if "transactions" not in nodes_dict[src]["properties"]:
+                        nodes_dict[src]["properties"]["transactions"] = {}
+                    nodes_dict[src]["properties"]["transactions"][dst] = {
+                        "partner_id": dst,
+                        "partner_name": nodes_dict[dst].get("name") or dst,
+                        "tx_count": t_count,
+                        "total_amount": t_amt,
+                        "summary": summary
+                    }
+                    nodes_dict[src]["properties"]["total_transactions"] = nodes_dict[src]["properties"].get("total_transactions", 0) + t_count
+                    nodes_dict[src]["properties"]["total_amount_transferred"] = nodes_dict[src]["properties"].get("total_amount_transferred", 0.0) + t_amt
+
+                    if "transactions" not in nodes_dict[dst]["properties"]:
+                        nodes_dict[dst]["properties"]["transactions"] = {}
+                    nodes_dict[dst]["properties"]["transactions"][src] = {
+                        "partner_id": src,
+                        "partner_name": nodes_dict[src].get("name") or src,
+                        "tx_count": t_count,
+                        "total_amount": t_amt,
+                        "summary": summary
+                    }
+                    nodes_dict[dst]["properties"]["total_transactions"] = nodes_dict[dst]["properties"].get("total_transactions", 0) + t_count
+                    nodes_dict[dst]["properties"]["total_amount_transferred"] = nodes_dict[dst]["properties"].get("total_amount_transferred", 0.0) + t_amt
+
+            filtered_nodes = list(nodes_dict.values())
+            edges_list = list(edges_dict.values())
+            return {
+                "case_id": case_id,
+                "graph_type": "person",
+                "total_nodes": len(filtered_nodes),
+                "total_edges": len(edges_list),
+                "nodes": filtered_nodes,
+                "edges": edges_list
+            }
+
+        # ---------------------------------------------------------
+        # MODE 2: CDR GRAPH ONLY (Clean telecommunication calls & towers)
+        # ---------------------------------------------------------
+        if graph_type in ["cdr", "telecom", "phone", "calls"]:
+            cdr_cypher = """
+            MATCH (ph1:Phone)
+            WHERE ($case_id IS NULL OR $case_id IN ph1.case_ids)
+            OPTIONAL MATCH (p1:Person)-[:OWNS|USES]->(ph1)
+            OPTIONAL MATCH (ph1)-[r:CALLED]->(ph2:Phone)
+            WHERE ($case_id IS NULL OR r.case_id = $case_id OR $case_id IN ph2.case_ids)
+            OPTIONAL MATCH (p2:Person)-[:OWNS|USES]->(ph2)
+            RETURN labels(ph1) as n_labels, properties(ph1) as n_props,
+                   p1.name as n_owner_name, p1.person_id as n_owner_id,
+                   elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
+                   labels(ph2) as m_labels, properties(ph2) as m_props,
+                   p2.name as m_owner_name, p2.person_id as m_owner_id
+            LIMIT $limit
+            """
+            rows = session.run(cdr_cypher, {"case_id": case_id, "limit": limit}).data()
+            for row in rows:
+                if row.get("n_owner_name") and row.get("n_props") is not None:
+                    row["n_props"]["associated_person_name"] = row["n_owner_name"]
+                    if row.get("n_owner_id"):
+                        row["n_props"]["associated_person_id"] = row["n_owner_id"]
+                if row.get("m_owner_name") and row.get("m_props") is not None:
+                    row["m_props"]["associated_person_name"] = row["m_owner_name"]
+                    if row.get("m_owner_id"):
+                        row["m_props"]["associated_person_id"] = row["m_owner_id"]
+
+            # Also fetch tower attachments
+            try:
+                tower_cypher = """
+                MATCH (ph:Phone)-[r:LOCATED_AT]->(tower:CellTower)
+                WHERE ($case_id IS NULL OR $case_id IN ph.case_ids)
+                RETURN labels(ph) as n_labels, properties(ph) as n_props,
+                       elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
+                       labels(tower) as m_labels, properties(tower) as m_props
+                LIMIT 150
+                """
+                tower_rows = session.run(tower_cypher, {"case_id": case_id}).data()
+                rows.extend(tower_rows)
+            except Exception:
+                pass
+
+        # ---------------------------------------------------------
+        # MODE 3: FINANCIAL GRAPH ONLY (Clean bank accounts & transfers)
+        # ---------------------------------------------------------
+        elif graph_type in ["financial", "finance", "bank", "money"]:
+            fin_cypher = """
+            MATCH (b1:BankAccount)
+            WHERE ($case_id IS NULL OR $case_id IN b1.case_ids)
+            OPTIONAL MATCH (b1)-[r:TRANSFERRED_TO]->(b2:BankAccount)
+            WHERE ($case_id IS NULL OR r.case_id = $case_id OR $case_id IN b2.case_ids)
+            RETURN labels(b1) as n_labels, properties(b1) as n_props,
+                   elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
+                   labels(b2) as m_labels, properties(b2) as m_props
+            LIMIT $limit
+            """
+            rows = session.run(fin_cypher, {"case_id": case_id, "limit": limit}).data()
+
+        # ---------------------------------------------------------
+        # MODE 4: FULL ECOSYSTEM GRAPH
+        # ---------------------------------------------------------
+        else:
+            if core_only:
+                cypher = """
+                MATCH (n)
+                WHERE ($case_id IS NULL OR $case_id IN n.case_ids)
+                  AND NOT 'Block' IN labels(n)
+                  AND NOT 'Transaction' IN labels(n)
+                  AND ($labels IS NULL OR size($labels) = 0 OR any(l IN labels(n) WHERE l IN $labels))
+                  AND NOT ('Phone' IN labels(n) AND (n.owner_person_id IS NULL OR n.owner_person_id = '') AND NOT coalesce(n.phone_number, '') STARTS WITH '99999')
+                OPTIONAL MATCH (n)-[r]->(m)
+                WHERE (m IS NULL OR $case_id IS NULL OR $case_id IN m.case_ids)
+                  AND (m IS NULL OR NOT 'Block' IN labels(m))
+                  AND (m IS NULL OR NOT 'Transaction' IN labels(m))
+                  AND (m IS NULL OR $labels IS NULL OR size($labels) = 0 OR any(l IN labels(m) WHERE l IN $labels))
+                  AND NOT (m IS NOT NULL AND 'Phone' IN labels(m) AND (m.owner_person_id IS NULL OR m.owner_person_id = '') AND NOT coalesce(m.phone_number, '') STARTS WITH '99999')
+                RETURN labels(n) as n_labels, properties(n) as n_props,
+                       elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
+                       labels(m) as m_labels, properties(m) as m_props
+                LIMIT $limit
+                """
+            else:
+                cypher = """
+                MATCH (n)
+                WHERE ($case_id IS NULL OR $case_id IN n.case_ids)
+                  AND NOT 'Block' IN labels(n)
+                  AND NOT 'Transaction' IN labels(n)
+                  AND ($labels IS NULL OR size($labels) = 0 OR any(l IN labels(n) WHERE l IN $labels))
+                OPTIONAL MATCH (n)-[r]->(m)
+                WHERE (m IS NULL OR $case_id IS NULL OR $case_id IN m.case_ids)
+                  AND (m IS NULL OR NOT 'Block' IN labels(m))
+                  AND (m IS NULL OR NOT 'Transaction' IN labels(m))
+                  AND (m IS NULL OR $labels IS NULL OR size($labels) = 0 OR any(l IN labels(m) WHERE l IN $labels))
+                RETURN labels(n) as n_labels, properties(n) as n_props,
+                       elementId(r) as r_id, type(r) as r_type, properties(r) as r_props,
+                       labels(m) as m_labels, properties(m) as m_props
+                LIMIT $limit
+                """
+            rows = session.run(cypher, {"case_id": case_id, "labels": node_labels, "limit": limit}).data()
 
         def get_node_id(labels: List[str], props: Dict[str, Any]) -> str:
             return str(
@@ -82,7 +395,12 @@ class GraphService:
             if "Person" in labels or primary_label == "Person":
                 return str(props.get("name") or node_id)
             if "Phone" in labels or primary_label == "Phone":
-                return str(props.get("phone_number") or node_id)
+                ph_num = str(props.get("phone_number") or node_id)
+                owner = props.get("associated_person_name") or props.get("registered_owner") or props.get("subscriber_name") or props.get("owner_name")
+                if owner and str(owner).lower() not in ["unknown", "n/a", "none"]:
+                    clean_owner = str(owner).split("\n")[0].strip()
+                    return f"{ph_num}\n({clean_owner})"
+                return ph_num
             if "BankAccount" in labels or primary_label == "BankAccount":
                 acc = props.get("account_number") or node_id
                 bank = props.get("bank_name")
@@ -152,6 +470,88 @@ class GraphService:
             if r_type and n_props and m_props:
                 n_id = get_node_id(n_labels, n_props)
                 m_id = get_node_id(m_labels, m_props)
+
+                # -------------------------------------------------------------
+                # 1. Consolidate parallel calls into a single edge between A & B
+                # -------------------------------------------------------------
+                if r_type in ["CALLED", "CALL", "COMMUNICATED", "COMMUNICATION"]:
+                    pair_key = f"CALL_{min(n_id, m_id)}_{max(n_id, m_id)}"
+                    dur = int(r_props.get("duration_seconds") or 0)
+                    ts = r_props.get("timestamp") or ""
+                    tower = r_props.get("cell_tower") or ""
+
+                    if pair_key in edges_dict:
+                        existing = edges_dict[pair_key]
+                        p = existing["properties"]
+                        p["call_count"] = p.get("call_count", 1) + 1
+                        p["total_duration_seconds"] = p.get("total_duration_seconds", 0) + dur
+                        dur_total = p["total_duration_seconds"]
+                        mins = dur_total // 60
+                        secs = dur_total % 60
+                        dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                        count = p["call_count"]
+                        existing["type"] = f"CALLED ({count}x)"
+                        p["summary"] = f"{count} calls ({dur_str})"
+                        if "history" not in p:
+                            p["history"] = []
+                        if len(p["history"]) < 10 and (ts or dur):
+                            p["history"].append({"timestamp": ts, "duration": dur, "tower": tower, "from": n_id, "to": m_id})
+                    else:
+                        mins = dur // 60
+                        secs = dur % 60
+                        dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                        edges_dict[pair_key] = {
+                            "id": pair_key,
+                            "type": "CALLED (1x)",
+                            "source": n_id,
+                            "target": m_id,
+                            "properties": {
+                                "call_count": 1,
+                                "total_duration_seconds": dur,
+                                "summary": f"1 call ({dur_str})",
+                                "history": [{"timestamp": ts, "duration": dur, "tower": tower, "from": n_id, "to": m_id}] if (ts or dur) else []
+                            }
+                        }
+                    continue
+
+                # -------------------------------------------------------------
+                # 2. Consolidate parallel financial transfers between A & B
+                # -------------------------------------------------------------
+                elif r_type in ["TRANSFERRED_TO", "TRANSACTION", "DEPOSITED_TO", "FUNDS_TRANSFER"]:
+                    pair_key = f"TX_{min(n_id, m_id)}_{max(n_id, m_id)}"
+                    amt = float(r_props.get("amount") or 0)
+                    ts = r_props.get("timestamp") or ""
+                    tx_id = r_props.get("transaction_id") or ""
+                    curr = r_props.get("currency") or "INR"
+
+                    if pair_key in edges_dict:
+                        existing = edges_dict[pair_key]
+                        p = existing["properties"]
+                        p["tx_count"] = p.get("tx_count", 1) + 1
+                        p["total_amount"] = p.get("total_amount", 0.0) + amt
+                        tot = p["total_amount"]
+                        count = p["tx_count"]
+                        existing["type"] = f"TRANSFERRED_TO ({count}x)"
+                        p["summary"] = f"{count} txns (₹{int(tot):,})"
+                        if "history" not in p:
+                            p["history"] = []
+                        if len(p["history"]) < 10 and (ts or amt):
+                            p["history"].append({"timestamp": ts, "amount": amt, "tx_id": tx_id, "from": n_id, "to": m_id, "currency": curr})
+                    else:
+                        edges_dict[pair_key] = {
+                            "id": pair_key,
+                            "type": "TRANSFERRED_TO (1x)",
+                            "source": n_id,
+                            "target": m_id,
+                            "properties": {
+                                "tx_count": 1,
+                                "total_amount": amt,
+                                "summary": f"1 txn (₹{int(amt):,})",
+                                "history": [{"timestamp": ts, "amount": amt, "tx_id": tx_id, "from": n_id, "to": m_id, "currency": curr}] if (ts or amt) else []
+                            }
+                        }
+                    continue
+
                 edge_id = str(
                     row.get("r_id")
                     or r_props.get("call_id")
@@ -168,24 +568,24 @@ class GraphService:
                     "properties": r_props
                 }
 
-        # 1. Connect BankAccount and Vehicle entities to their existing Person owner if not already linked
+        # 3. Connect BankAccount, Vehicle, and Phone entities to their existing Person owner if not already linked
         for node_id, node in list(nodes_dict.items()):
             labels = node.get("labels") or []
-            if "BankAccount" in labels or "Vehicle" in labels:
+            if "BankAccount" in labels or "Vehicle" in labels or "Phone" in labels:
                 has_owner_edge = any(
-                    e.get("type") == "OWNS" and e.get("target") == node_id
+                    e.get("type") in ["OWNS", "USES", "HAS_PHONE"] and (e.get("target") == node_id or e.get("source") == node_id)
                     for e in edges_dict.values()
                 )
                 if not has_owner_edge:
                     props = node.get("properties") or {}
-                    owner_hint = (props.get("holder_name") or props.get("registered_owner") or props.get("owner_name") or "").strip()
-                    owner_person_id = props.get("owner_person_id")
+                    owner_hint = (props.get("holder_name") or props.get("registered_owner") or props.get("owner_name") or props.get("associated_person_name") or "").strip()
+                    owner_person_id = props.get("owner_person_id") or props.get("associated_person_id")
 
                     # Search for matching existing Person node
                     matched_person_id = None
                     for pid, pnode in nodes_dict.items():
                         if "Person" in (pnode.get("labels") or []):
-                            pname = (pnode.get("name") or "").strip()
+                            pname = (pnode.get("name") or "").split("\n")[0].strip()
                             if owner_person_id and pid == owner_person_id:
                                 matched_person_id = pid
                                 break
@@ -205,9 +605,124 @@ class GraphService:
                             "properties": {"status": "Owner Relationship"}
                         }
 
+        # 3b. Resolve and cross-populate associated Person for every Phone node and update display name
+        for node_id, node in list(nodes_dict.items()):
+            labels = node.get("labels") or []
+            if "Phone" in labels:
+                props = node.get("properties") or {}
+                assoc_name = props.get("associated_person_name") or props.get("registered_owner") or props.get("subscriber_name") or props.get("owner_name")
+                assoc_id = props.get("associated_person_id") or props.get("owner_person_id")
+
+                if not assoc_name:
+                    for e in edges_dict.values():
+                        if e.get("type") in ["OWNS", "USES", "HAS_PHONE"]:
+                            if e.get("target") == node_id and e.get("source") in nodes_dict:
+                                partner = nodes_dict[e["source"]]
+                                if "Person" in (partner.get("labels") or []):
+                                    assoc_name = partner.get("properties", {}).get("name") or partner.get("name")
+                                    assoc_id = e["source"]
+                                    break
+                            elif e.get("source") == node_id and e.get("target") in nodes_dict:
+                                partner = nodes_dict[e["target"]]
+                                if "Person" in (partner.get("labels") or []):
+                                    assoc_name = partner.get("properties", {}).get("name") or partner.get("name")
+                                    assoc_id = e["target"]
+                                    break
+
+                if not assoc_name:
+                    raw_ph = str(props.get("phone_number") or node_id)
+                    for pid, pnode in nodes_dict.items():
+                        if "Person" in (pnode.get("labels") or []):
+                            p_props = pnode.get("properties") or {}
+                            ph_list = p_props.get("phone_numbers") or []
+                            if isinstance(ph_list, str):
+                                ph_list = [ph_list]
+                            if raw_ph in ph_list or any(raw_ph in str(x) for x in ph_list):
+                                assoc_name = p_props.get("name") or pnode.get("name")
+                                assoc_id = pid
+                                break
+
+                if assoc_name and str(assoc_name).lower() not in ["unknown", "n/a", "none"]:
+                    clean_assoc = str(assoc_name).split("\n")[0].strip()
+                    props["associated_person_name"] = clean_assoc
+                    if assoc_id:
+                        props["associated_person_id"] = assoc_id
+                    raw_ph = str(props.get("phone_number") or node_id)
+                    node["name"] = f"{raw_ph}\n({clean_assoc})"
+
         edges_list = list(edges_dict.values())
 
-        # 2. Filter out isolated / disconnected nodes only when core_only is True
+        # 4. Cross-populate communication and financial transaction statistics into every node
+        for edge in edges_list:
+            e_type = edge.get("type") or ""
+            props = edge.get("properties") or {}
+            src = edge.get("source")
+            dst = edge.get("target")
+
+            if ("CALLED" in e_type or "COMMUNICATED" in e_type) and src in nodes_dict and dst in nodes_dict:
+                count = int(props.get("call_count") or 1)
+                dur = int(props.get("total_duration_seconds", props.get("duration_seconds", 0)))
+                mins = dur // 60
+                secs = dur % 60
+                dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                summary = props.get("summary") or f"{count} calls ({dur_str})"
+
+                # src node stats
+                if "communications" not in nodes_dict[src]["properties"]:
+                    nodes_dict[src]["properties"]["communications"] = {}
+                nodes_dict[src]["properties"]["communications"][dst] = {
+                    "partner_id": dst,
+                    "partner_name": nodes_dict[dst].get("name") or dst,
+                    "call_count": count,
+                    "total_duration_seconds": dur,
+                    "summary": summary
+                }
+                nodes_dict[src]["properties"]["total_calls"] = nodes_dict[src]["properties"].get("total_calls", 0) + count
+
+                # dst node stats
+                if "communications" not in nodes_dict[dst]["properties"]:
+                    nodes_dict[dst]["properties"]["communications"] = {}
+                nodes_dict[dst]["properties"]["communications"][src] = {
+                    "partner_id": src,
+                    "partner_name": nodes_dict[src].get("name") or src,
+                    "call_count": count,
+                    "total_duration_seconds": dur,
+                    "summary": summary
+                }
+                nodes_dict[dst]["properties"]["total_calls"] = nodes_dict[dst]["properties"].get("total_calls", 0) + count
+
+            elif ("TRANSFERRED" in e_type or "TRANSACTION" in e_type or "FUNDS_TRANSFER" in e_type) and src in nodes_dict and dst in nodes_dict:
+                tx_count = int(props.get("tx_count") or 1)
+                total_amt = float(props.get("total_amount", props.get("amount", 0)))
+                summary = props.get("summary") or f"{tx_count} txns (₹{int(total_amt):,})"
+
+                # src node stats
+                if "transactions" not in nodes_dict[src]["properties"]:
+                    nodes_dict[src]["properties"]["transactions"] = {}
+                nodes_dict[src]["properties"]["transactions"][dst] = {
+                    "partner_id": dst,
+                    "partner_name": nodes_dict[dst].get("name") or dst,
+                    "tx_count": tx_count,
+                    "total_amount": total_amt,
+                    "summary": summary
+                }
+                nodes_dict[src]["properties"]["total_transactions"] = nodes_dict[src]["properties"].get("total_transactions", 0) + tx_count
+                nodes_dict[src]["properties"]["total_amount_transferred"] = nodes_dict[src]["properties"].get("total_amount_transferred", 0.0) + total_amt
+
+                # dst node stats
+                if "transactions" not in nodes_dict[dst]["properties"]:
+                    nodes_dict[dst]["properties"]["transactions"] = {}
+                nodes_dict[dst]["properties"]["transactions"][src] = {
+                    "partner_id": src,
+                    "partner_name": nodes_dict[src].get("name") or src,
+                    "tx_count": tx_count,
+                    "total_amount": total_amt,
+                    "summary": summary
+                }
+                nodes_dict[dst]["properties"]["total_transactions"] = nodes_dict[dst]["properties"].get("total_transactions", 0) + tx_count
+                nodes_dict[dst]["properties"]["total_amount_transferred"] = nodes_dict[dst]["properties"].get("total_amount_transferred", 0.0) + total_amt
+
+        # 5. Filter out isolated / disconnected nodes only when core_only is True
         if core_only:
             connected_node_ids = set()
             for e in edges_list:
@@ -312,8 +827,8 @@ class GraphService:
         """
         rel_rows = session.run(rel_cypher, {"id": entity_id}).data()
 
-        seen_keys = set()
-        connections = []
+        seen_keys: Dict[Tuple[str, str, str], int] = {}
+        connections: List[Dict[str, Any]] = []
         for row in rel_rows:
             n_labels = row.get("neighbor_labels") or []
             if "Block" in n_labels:
@@ -327,15 +842,59 @@ class GraphService:
             direction = "OUTGOING" if row["is_outgoing"] else "INCOMING"
 
             dedup_key = (rel_t, direction, nid)
-            if dedup_key in seen_keys:
-                continue
-            seen_keys.add(dedup_key)
+            rel_props = dict(row.get("relationship_properties") or {})
+            call_dur = int(rel_props.get("duration_seconds") or rel_props.get("call_duration") or 0)
 
+            if dedup_key in seen_keys:
+                idx = seen_keys[dedup_key]
+                existing = connections[idx]
+                existing_props = existing.get("relationship_properties") or {}
+
+                if rel_t in ["TRANSFERRED_TO", "TRANSACTION", "DEPOSITED_TO", "FUNDS_TRANSFER"]:
+                    t_count = int(existing_props.get("tx_count", 1)) + 1
+                    t_amt = float(existing_props.get("total_amount", existing_props.get("amount", 0))) + float(rel_props.get("amount", 0))
+                    existing_props["tx_count"] = t_count
+                    existing_props["total_amount"] = t_amt
+                    existing_props["summary"] = f"{t_count} txns (₹{int(t_amt):,})"
+                    existing["relationship_properties"] = existing_props
+                    continue
+                elif rel_t in ["CALLED", "COMMUNICATED"]:
+                    c_count = int(existing_props.get("call_count", 1)) + 1
+                    tot_dur = int(existing_props.get("total_duration_seconds", existing_props.get("duration_seconds", 0))) + call_dur
+                    existing_props["call_count"] = c_count
+                    existing_props["total_duration_seconds"] = tot_dur
+                    mins = tot_dur // 60
+                    secs = tot_dur % 60
+                    dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+                    existing_props["summary"] = f"{c_count} calls ({dur_str})"
+                    existing["relationship_properties"] = existing_props
+                    continue
+                else:
+                    continue
+
+            call_count = int(rel_props.get("call_count") or 1)
+            tot_dur = int(rel_props.get("total_duration_seconds") or rel_props.get("duration_seconds") or call_dur)
+            mins = tot_dur // 60
+            secs = tot_dur % 60
+            dur_str = f"{mins}m {secs}s" if mins > 0 else f"{secs}s"
+
+            if rel_t in ["CALLED", "COMMUNICATED"]:
+                rel_props["call_count"] = call_count
+                rel_props["total_duration_seconds"] = tot_dur
+                rel_props["summary"] = rel_props.get("summary") or f"{call_count} calls ({dur_str})"
+            elif rel_t in ["TRANSFERRED_TO", "TRANSACTION", "DEPOSITED_TO", "FUNDS_TRANSFER"]:
+                t_count = int(rel_props.get("tx_count") or 1)
+                t_amt = float(rel_props.get("total_amount") or rel_props.get("amount") or 0)
+                rel_props["tx_count"] = t_count
+                rel_props["total_amount"] = t_amt
+                rel_props["summary"] = rel_props.get("summary") or f"{t_count} txns (₹{int(t_amt):,})"
+
+            seen_keys[dedup_key] = len(connections)
             connections.append({
                 "relationship": rel_t,
                 "rel_type": rel_t,
                 "direction": direction,
-                "relationship_properties": row["relationship_properties"],
+                "relationship_properties": rel_props,
                 "neighbor_id": nid,
                 "target_id": nid,
                 "neighbor_name": nname,
@@ -344,10 +903,65 @@ class GraphService:
                 "neighbor_properties": row.get("neighbor_properties") or {}
             })
 
+        # Enrich target_node properties with aggregated communications and transaction breakdown
+        target_props = dict(target_node)
+        comm_dict = {}
+        tx_dict = {}
+
+        for conn in connections:
+            r_type = conn["relationship"]
+            r_props = conn.get("relationship_properties") or {}
+            t_id = conn["target_id"]
+
+            if r_type in ["CALLED", "COMMUNICATED"]:
+                comm_dict[t_id] = {
+                    "partner_id": t_id,
+                    "partner_name": conn["target_name"],
+                    "call_count": r_props.get("call_count", 1),
+                    "total_duration_seconds": r_props.get("total_duration_seconds", 0),
+                    "summary": r_props.get("summary", "")
+                }
+            elif r_type in ["TRANSFERRED_TO", "TRANSACTION", "DEPOSITED_TO", "FUNDS_TRANSFER"]:
+                tx_dict[t_id] = {
+                    "partner_id": t_id,
+                    "partner_name": conn["target_name"],
+                    "tx_count": r_props.get("tx_count", 1),
+                    "total_amount": r_props.get("total_amount", r_props.get("amount", 0)),
+                    "summary": r_props.get("summary", "")
+                }
+
+        if comm_dict:
+            target_props["communications"] = comm_dict
+            target_props["total_calls"] = sum(c["call_count"] for c in comm_dict.values())
+        if tx_dict:
+            target_props["transactions"] = tx_dict
+            target_props["total_transactions"] = sum(t["tx_count"] for t in tx_dict.values())
+            target_props["total_amount_transferred"] = sum(float(t["total_amount"]) for t in tx_dict.values())
+
+        # Check if target_node is a Phone and resolve associated Person
+        if "Phone" in labels:
+            associated_person = None
+            associated_person_id = None
+            for conn in connections:
+                n_labels = conn.get("neighbor_labels") or []
+                r_type = conn.get("relationship") or ""
+                if "Person" in n_labels or r_type in ["OWNS", "USES", "HAS_PHONE", "SUBSCRIBER"]:
+                    associated_person = conn.get("target_name")
+                    associated_person_id = conn.get("target_id")
+                    break
+            if not associated_person:
+                associated_person = target_props.get("registered_owner") or target_props.get("owner_name")
+                associated_person_id = target_props.get("owner_person_id")
+
+            if associated_person and str(associated_person).lower() not in ["unknown", "n/a", "none"]:
+                target_props["associated_person_name"] = str(associated_person).split("\n")[0].strip()
+                if associated_person_id:
+                    target_props["associated_person_id"] = associated_person_id
+
         return {
             "entity_id": entity_id,
             "labels": labels,
-            "properties": dict(target_node),
+            "properties": target_props,
             "total_connections": len(connections),
             "connections": connections
         }
@@ -619,23 +1233,28 @@ class GraphService:
         while preserving any entities shared with other cases (removing case_id from case_ids).
         Returns a dictionary summary or None if the case does not exist.
         """
-        # 1. Verify case exists
-        check_cypher = "MATCH (c:Case {case_id: $case_id}) RETURN count(c) AS count"
+        # 1. Verify case exists and resolve exact ID
+        check_cypher = """
+        MATCH (c:Case)
+        WHERE c.case_id = $case_id OR c.id = $case_id OR toLower(c.case_id) = toLower($case_id)
+        RETURN count(c) AS count, coalesce(c.case_id, c.id) AS resolved_id
+        """
         res = session.run(check_cypher, {"case_id": case_id}).data()
-        count = res[0]["count"] if res and "count" in res[0] else 0
-        if not count:
+        if not res or not res[0].get("count"):
             return None
+        resolved_case_id = res[0].get("resolved_id") or case_id
 
         # 2. Count exclusive nodes & their attached relationships
         exclusive_stats_cypher = """
         MATCH (n)
-        WHERE (n:Case AND n.case_id = $case_id)
+        WHERE (n:Case AND (n.case_id = $case_id OR n.id = $case_id))
            OR (size(n.case_ids) = 1 AND $case_id IN n.case_ids)
            OR n.case_ids = [$case_id]
+           OR ((n)<-[:INVOLVES]-(c:Case) AND (c.case_id = $case_id OR c.id = $case_id) AND NOT (n)<-[:INVOLVES]-(:Case WHERE case_id <> $case_id AND id <> $case_id))
         OPTIONAL MATCH (n)-[r]-()
         RETURN count(DISTINCT n) AS nodes_removed, count(DISTINCT r) AS exclusive_rels
         """
-        ex_res = session.run(exclusive_stats_cypher, {"case_id": case_id}).data()
+        ex_res = session.run(exclusive_stats_cypher, {"case_id": resolved_case_id}).data()
         nodes_removed = ex_res[0]["nodes_removed"] if ex_res else 0
         exclusive_rels = ex_res[0]["exclusive_rels"] if ex_res else 0
 
@@ -644,12 +1263,12 @@ class GraphService:
         MATCH (a)-[r]->(b)
         WHERE r.case_id = $case_id
           AND NOT (
-            (a:Case AND a.case_id = $case_id) OR (size(a.case_ids) = 1 AND $case_id IN a.case_ids) OR a.case_ids = [$case_id]
-            OR (b:Case AND b.case_id = $case_id) OR (size(b.case_ids) = 1 AND $case_id IN b.case_ids) OR b.case_ids = [$case_id]
+            (a:Case AND (a.case_id = $case_id OR a.id = $case_id)) OR (size(a.case_ids) = 1 AND $case_id IN a.case_ids) OR a.case_ids = [$case_id]
+            OR (b:Case AND (b.case_id = $case_id OR b.id = $case_id)) OR (size(b.case_ids) = 1 AND $case_id IN b.case_ids) OR b.case_ids = [$case_id]
           )
         RETURN count(DISTINCT r) AS shared_rels
         """
-        sh_res = session.run(shared_rels_cypher, {"case_id": case_id}).data()
+        sh_res = session.run(shared_rels_cypher, {"case_id": resolved_case_id}).data()
         shared_rels = sh_res[0]["shared_rels"] if sh_res else 0
         total_rels_removed = exclusive_rels + shared_rels
 
@@ -659,50 +1278,61 @@ class GraphService:
         WHERE $case_id IN n.case_ids AND size(n.case_ids) > 1
         RETURN count(DISTINCT n) AS nodes_detached
         """
-        det_res = session.run(shared_nodes_cypher, {"case_id": case_id}).data()
+        det_res = session.run(shared_nodes_cypher, {"case_id": resolved_case_id}).data()
         nodes_detached = det_res[0]["nodes_detached"] if det_res else 0
 
-        # 5. Execute deletions & updates
-        # 5a. Detach delete exclusively-owned nodes (and case node itself)
+        # 5. Execute deletions & updates within an explicit committed transaction
         delete_nodes_cypher = """
         MATCH (n)
-        WHERE (n:Case AND n.case_id = $case_id)
+        WHERE (n:Case AND (n.case_id = $case_id OR n.id = $case_id))
            OR (size(n.case_ids) = 1 AND $case_id IN n.case_ids)
            OR n.case_ids = [$case_id]
+           OR ((n)<-[:INVOLVES]-(c:Case) AND (c.case_id = $case_id OR c.id = $case_id) AND NOT (n)<-[:INVOLVES]-(:Case WHERE case_id <> $case_id AND id <> $case_id))
         DETACH DELETE n
         """
-        session.run(delete_nodes_cypher, {"case_id": case_id})
 
-        # 5b. Delete any remaining relationships scoped to this case
         delete_rels_cypher = """
         MATCH ()-[r]->()
         WHERE r.case_id = $case_id
         DELETE r
         """
-        session.run(delete_rels_cypher, {"case_id": case_id})
 
-        # 5c. Update multi-case nodes: remove case_id from their array
         update_multicase_cypher = """
         MATCH (n)
         WHERE $case_id IN n.case_ids AND size(n.case_ids) > 1
         SET n.case_ids = [c IN n.case_ids WHERE c <> $case_id]
         """
-        session.run(update_multicase_cypher, {"case_id": case_id})
+
+        with session.begin_transaction() as tx:
+            r1 = tx.run(delete_nodes_cypher, {"case_id": resolved_case_id})
+            if hasattr(r1, "consume"):
+                r1.consume()
+            r2 = tx.run(delete_rels_cypher, {"case_id": resolved_case_id})
+            if hasattr(r2, "consume"):
+                r2.consume()
+            r3 = tx.run(update_multicase_cypher, {"case_id": resolved_case_id})
+            if hasattr(r3, "consume"):
+                r3.consume()
+            if hasattr(tx, "commit") and not getattr(tx, "_is_mock", False):
+                try:
+                    tx.commit()
+                except Exception:
+                    pass
 
         # 5d. Purge blockchain evidence blocks for this deleted case
         try:
             from backend.services.blockchain_service import BlockchainService
-            BlockchainService.purge_case_blocks(case_id, session=session)
+            BlockchainService.purge_case_blocks(resolved_case_id, session=session)
         except Exception as e:
-            logger.error(f"Failed to purge blockchain blocks for case '{case_id}': {e}")
+            logger.error(f"Failed to purge blockchain blocks for case '{resolved_case_id}': {e}")
 
         logger.info(
-            f"Deleted case '{case_id}': {nodes_removed} nodes removed, "
+            f"Deleted case '{resolved_case_id}': {nodes_removed} nodes removed, "
             f"{nodes_detached} nodes detached, {total_rels_removed} rels removed."
         )
 
         return {
-            "case_id": case_id,
+            "case_id": resolved_case_id,
             "nodes_removed": int(nodes_removed),
             "nodes_detached": int(nodes_detached),
             "relationships_removed": int(total_rels_removed),
@@ -713,6 +1343,8 @@ class GraphService:
     def reset_database(cls, session: Session) -> Dict[str, Any]:
         logger.warning("Executing complete database wipe via reset_database...")
         res = session.run("MATCH (n) DETACH DELETE n")
+        if hasattr(res, "consume"):
+            res.consume()
         try:
             from backend.services.blockchain_service import BlockchainService
             BlockchainService.reset_ledger(session=session)

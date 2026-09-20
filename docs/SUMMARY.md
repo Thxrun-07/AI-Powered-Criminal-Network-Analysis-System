@@ -48,8 +48,8 @@ SIH-189-completed/
 │
 ├── frontend/                           # React 19 + TypeScript + Tailwind CSS Frontend
 │   ├── src/                            # Modern SPA component architecture
-│   │   ├── components/                 # Sidebar, Overview, GraphExplorer, ShortestPath, etc.
-│   │   ├── services/api.ts             # Strongly typed REST client & interfaces
+│   │   ├── components/                 # Sidebar, Overview, GraphExplorer, EntityPropertiesTable, FormattedAiMessage, etc.
+│   │   ├── services/api.ts             # Strongly typed REST client, color maps & interfaces
 │   │   ├── App.tsx                     # Top-level state coordinator & routing
 │   │   └── main.tsx                    # React 19 bootstrap
 │   ├── dist/                           # Compiled production build served by FastAPI
@@ -69,7 +69,7 @@ SIH-189-completed/
 │   │   ├── entity.py                   # Models for 13 canonical entities (Person, Phone, BankAccount, etc.)
 │   │   ├── event.py                    # Incremental event models (EventBatch, GraphEvent, EventProcessingResult)
 │   │   ├── ingestion_models.py         # Consolidated models for multi-file/CSV/PDF extraction
-│   │   ├── insights.py                 # Forensic insight schemas and CaseAIInsightResponse
+│   │   ├── insights.py                 # Forensic insight schemas, AI Copilot & GraphAIChatResponse
 │   │   ├── path.py                     # Shortest path response and AmbiguityCandidate models
 │   │   ├── rankings.py                 # Centrality ranking responses and metric schemas
 │   │   └── relationship.py             # Communication, Transaction, Surveillance, and History models
@@ -78,12 +78,15 @@ SIH-189-completed/
 │   │   ├── __init__.py                 # Service exports
 │   │   ├── blockchain_service.py       # Cryptographic evidence ledger, Merkle roots, and chain verification
 │   │   ├── delta_processor.py          # Atomic incremental event batch processor with rollback safety
+│   │   ├── evidence_relationship_engine.py # Evidence-backed typed relationship derivation
+│   │   ├── evidence_store.py           # Granular CDR and transaction storage & retrieval
 │   │   ├── gemini_service.py           # Forensic AI intelligence brief synthesis via Gemini 2.5 Flash
-│   │   ├── graph_service.py            # Subgraph retrieval, Entity 360 dossiers, case listing, and safe deletion
+│   │   ├── graph_service.py            # Subgraph extraction (CDR/Person/Financial), call/tx aggregation, dossiers
 │   │   ├── graph_writes.py             # Single source of truth for all Neo4j Cypher MERGE/UNWIND statements
 │   │   ├── ingestion_engine.py         # Multi-format heuristic & LLM parser for CDR/Bank CSVs, FIR PDFs & text
 │   │   ├── ingestion_service.py        # Atomic case ingestion engine with ACID transaction rollback
 │   │   ├── insights_engine.py          # Reference implementations for all 10 forensic insight detectors
+│   │   ├── normalizer.py               # E.164 phone & account identifier normalization
 │   │   ├── path_service.py             # Shortest path traversal with case-insensitive name/alias resolution
 │   │   ├── ranking_service.py          # Degree, Weighted Degree, Cross-Case, and GDS centrality algorithms
 │   │   ├── schema_manager.py           # Database constraints and index initializer for all node labels

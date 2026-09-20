@@ -57,12 +57,17 @@ Atlas ingests both structured evidence (Call Detail Records CSVs, Bank Transacti
   - `[:TRANSFERRED_TO {amount, timestamp, tx_id}]`
   - `[:OWNS]`, `[:ASSOCIATED_WITH]`, `[:INVOLVES]`, `[:REGISTERED_TO]`
 
-### 2.3 Graph Visualization & Physics Tuning
-- **Vis.js Network Canvas**: Interactive, draggable, zoomable WebGL/HTML5 canvas.
-- **Elastic Physics with High Damping**: Configured with `forceAtlas2Based` solver:
-  - `gravitationalConstant: -55`, `centralGravity: 0.015`, `springLength: 160`, `springConstant: 0.07`
-  - `damping: 0.52`: Rapidly absorbs kinetic energy so nodes bounce smoothly into place without jittering or flying off-screen.
-  - `avoidOverlap: 0.90`: Keeps entity labels clean and readable.
+### 2.3 Graph Visualization, Specialized Subgraphs & Edge Aggregation
+- **Vis.js Network Canvas**: Interactive, draggable, zoomable WebGL/HTML5 canvas with post-stabilization freeze to prevent CPU thrashing.
+- **Dedicated Subgraph Extraction Modes**:
+  - *🌐 Full Ecosystem*: Complete holistic network view.
+  - *📞 CDR Telecom Graph*: Filters out bank accounts and non-telecom clutter; isolates caller-callee links, durations, and connected cell tower triangles (`#06b6d4`).
+  - *👥 Person Syndicate Network*: Synthesizes human-to-human links, communication frequencies, and financial flows while filtering device and document clutter.
+  - *💳 Financial Money Flows*: Isolates bank accounts, wire trails, and corporate organizations for anti-money-laundering tracking.
+- **Parallel Edge Aggregation**:
+  - Repeated calls between identical phone endpoints are consolidated into single `CALLED (nx)` edges displaying total duration and call history.
+  - Repeated bank transfers are consolidated into single `TRANSFERRED_TO (nx)` edges displaying accumulated amount (`₹X,XXX`) and transaction IDs.
+- **Node Specification & Explanation Table**: Inspects any entity with human-readable keys for carriers, IMEIs, IFSC codes, registration numbers, and crime categories.
 - **Deterministic Numerical Seed**: Derived from the Case ID (e.g. `CASE_008` produces seed `1347895`). Every time you open a case, its layout renders identically and reproducibly.
 - **Multi-Structure Layouts**:
   - *Structured Organic (Reduced Bounce)*: Natural cluster formation.
@@ -89,8 +94,8 @@ The platform runs automated Cypher pattern detectors across the graph:
 - Shortest path queries (Dijkstra) compute direct connection paths between suspects and victims.
 
 ### 2.6 Dual AI Capabilities: Executive Summary & Graph Copilot
-1. **Case Summary**: Synthesizes structured forensic intelligence dossiers (Executive Summary, Risk Level, Modus Operandi, Suspects, Red Flags, Law Enforcement Next Steps).
-2. **Graph AI Copilot**: A dedicated side-panel docked beside the network graph that accepts natural-language questions from users who cannot visually decode complex graph structures.
+1. **Case Summary**: Synthesizes structured forensic intelligence dossiers (Executive Summary, Risk Level, Modus Operandi, Suspects, Red Flags, Law Enforcement Next Steps) with inline markdown parsing.
+2. **Graph AI Copilot & Autonomous Extraction**: A dedicated side-panel docked beside the network graph that accepts natural-language questions. In addition to textual answers, it detects intent commands (e.g., *"extract only CDR graph"*, *"person graph"*, *"extract financial flow"*) and autonomously shifts the canvas into the focused subgraph view.
 
 ### 2.7 Cryptographic Blockchain Evidence Chain of Custody
 - **SHA-256 Block Hashing**: Every ingested case and individual forensic artifact (FIR, CDR, Bank Statement, Surveillance Log) receives a verifiable cryptographic hash.

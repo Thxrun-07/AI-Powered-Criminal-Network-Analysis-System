@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { API, esc, Case, Insight } from '../services/api';
+import { renderInlineMarkdown } from './FormattedAiMessage';
 
 declare module '../services/api' {
   interface Insight {
@@ -65,25 +66,101 @@ export function PatternInsightsModule({
     fetchInsights();
   }, [fetchInsights]);
 
+  const [searchTerm, setSearchTerm] = useState<string>('');
+
+  const kpis = useMemo(() => {
+    const total = (insights || []).length;
+    const critical = (insights || []).filter(i => (i.severity || '').toUpperCase() === 'CRITICAL').length;
+    const high = (insights || []).filter(i => (i.severity || '').toUpperCase() === 'HIGH').length;
+    const crossCase = (insights || []).filter(i => (i.case_ids || []).length > 1 || (i.insight_type || '').includes('CROSS')).length;
+    return { total, critical, high, crossCase };
+  }, [insights]);
+
   const filteredInsights = useMemo(() => {
-    if (!severityFilter) return insights;
-    return (insights || []).filter(i => (i.severity || '').toUpperCase() === severityFilter);
-  }, [insights, severityFilter]);
+    let list = insights || [];
+    if (severityFilter) {
+      list = list.filter(i => (i.severity || '').toUpperCase() === severityFilter);
+    }
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(i =>
+        (i.title || '').toLowerCase().includes(q) ||
+        (i.derived_interpretation || '').toLowerCase().includes(q) ||
+        (i.insight_type || '').toLowerCase().includes(q) ||
+        (i.observed_facts || []).some(f => f.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [insights, severityFilter, searchTerm]);
 
   return (
-    <div>
-      <div className="card">
-        <div className="card-header flex items-center justify-between">
-          <div className="card-title font-semibold text-base">Automated Forensic Detectors</div>
+    <div className="flex flex-col gap-4" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Top AI Forensic Analytics KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+        <div className="card flex items-center gap-3" style={{ marginBottom: 0, padding: '14px 16px' }}>
+          <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+            🧠
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total AI Detections</div>
+            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text)' }}>{kpis.total}</div>
+          </div>
+        </div>
+
+        <div className="card flex items-center gap-3" style={{ marginBottom: 0, padding: '14px 16px' }}>
+          <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+            🚨
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Critical Threats</div>
+            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--red)' }}>{kpis.critical}</div>
+          </div>
+        </div>
+
+        <div className="card flex items-center gap-3" style={{ marginBottom: 0, padding: '14px 16px' }}>
+          <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(249, 115, 22, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+            ⚠️
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>High Severity</div>
+            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--yellow)' }}>{kpis.high}</div>
+          </div>
+        </div>
+
+        <div className="card flex items-center gap-3" style={{ marginBottom: 0, padding: '14px 16px' }}>
+          <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+            🔗
+          </div>
+          <div>
+            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cross-Case Links</div>
+            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--green)' }}>{kpis.crossCase}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 0 }}>
+        <div className="card-header flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+            <div className="card-title font-semibold text-base">Automated Forensic Detectors</div>
+          </div>
           <div className="row flex flex-wrap items-center gap-2.5" style={{gap:'10px', flexWrap:'wrap'}}>
-            <div className="field" style={{minWidth:'200px'}}>
+            <input
+              type="text"
+              className="control"
+              placeholder="Filter pattern insights…"
+              value={searchTerm}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+              style={{ minWidth: '180px', fontSize: '12px' }}
+            />
+            <div className="field" style={{minWidth:'180px'}}>
               <select className="control" value={selectedCase} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedCase(e.target.value)}>
                 <option value="">All Ingested Cases</option>
                 <option value="__DELTA__">Cross-Case Delta Insights Only</option>
                 {cases.map(c => <option key={c.case_id} value={c.case_id}>Case: {esc(c.case_name || c.case_id)}</option>)}
               </select>
             </div>
-            <select className="control" value={severityFilter} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSeverityFilter(e.target.value)} style={{maxWidth:'160px'}}>
+            <select className="control" value={severityFilter} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSeverityFilter(e.target.value)} style={{maxWidth:'150px'}}>
               <option value="">All Severities</option>
               <option value="CRITICAL">CRITICAL</option>
               <option value="HIGH">HIGH</option>
@@ -123,11 +200,16 @@ export function PatternInsightsModule({
                   <span className={`tag ${sevClass}`}>{sev}</span>
                   <span className="mono text-xs" style={{fontSize:'11px', color:'var(--text-faint)'}}>{esc(i.insight_type)}</span>
                 </div>
-                <div className="font-bold text-sm text-foreground mb-2" style={{fontWeight:700, fontSize:'15px', marginBottom:'8px', color:'var(--text)'}}>{esc(i.title)}</div>
-                <div style={{fontSize:'13px', color:'var(--text-dim)', marginBottom:'14px', flex:1, lineHeight:1.5}}>{esc(i.derived_interpretation)}</div>
+                <div className="font-bold text-sm text-foreground mb-2" style={{fontWeight:700, fontSize:'15px', marginBottom:'8px', color:'var(--text)'}}>
+                  {renderInlineMarkdown(esc(i.title))}
+                </div>
+                <div style={{fontSize:'13px', color:'var(--text-dim)', marginBottom:'14px', flex:1, lineHeight:1.5}}>
+                  {renderInlineMarkdown(esc(i.derived_interpretation))}
+                </div>
                 {(i.observed_facts || []).slice(0, 2).map((f, idx) => (
                   <div key={idx} className="flex gap-1.5 mb-1 text-xs" style={{fontSize:'12px', color:'var(--text-faint)', display:'flex', gap:'6px', marginBottom:'4px'}}>
-                    <span style={{color:'var(--accent)'}}>●</span> {esc(f)}
+                    <span style={{color:'var(--accent)'}}>●</span>
+                    <div>{renderInlineMarkdown(esc(f))}</div>
                   </div>
                 ))}
                 <div className="flex gap-1.5 flex-wrap mt-3.5" style={{marginTop:'14px', display:'flex', gap:'6px', flexWrap:'wrap'}}>
@@ -148,12 +230,15 @@ export function PatternInsightsModule({
               <span className={`tag ${(selectedInsight.severity||'med').toLowerCase()}`}>{esc(selectedInsight.severity)}</span>
               <span className="tag plain mono">{esc(selectedInsight.insight_type)} · {esc(selectedInsight.insight_id)}</span>
             </div>
-            <h3 className="font-bold text-lg">{esc(selectedInsight.title)}</h3>
-            <div style={{fontSize:'14.5px', color:'var(--text)', marginBottom:'18px', lineHeight:1.6}}>{esc(selectedInsight.derived_interpretation)}</div>
+            <h3 className="font-bold text-lg">{renderInlineMarkdown(esc(selectedInsight.title))}</h3>
+            <div style={{fontSize:'14.5px', color:'var(--text)', marginBottom:'18px', lineHeight:1.6}}>
+              {renderInlineMarkdown(esc(selectedInsight.derived_interpretation))}
+            </div>
             <div style={{fontWeight:700, fontSize:'13.5px', marginBottom:'8px'}}>Observed Graph Facts</div>
             {(selectedInsight.observed_facts || []).map((f, idx) => (
               <div key={idx} className="flex gap-2 mb-1.5 text-sm" style={{fontSize:'13px', color:'var(--text-dim)', marginBottom:'6px', display:'flex', gap:'8px'}}>
-                <span style={{color:'var(--accent)'}}>➔</span> {esc(f)}
+                <span style={{color:'var(--accent)'}}>➔</span>
+                <div>{renderInlineMarkdown(esc(f))}</div>
               </div>
             ))}
             {(selectedInsight.alternative_explanations || []).length > 0 && (

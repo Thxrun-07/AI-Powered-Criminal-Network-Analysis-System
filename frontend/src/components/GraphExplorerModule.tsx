@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as vis from 'vis-network/standalone';
 import { API, esc, LABEL_COLOR, getNodeLevel, getDeterministicSeed, Case, GraphNode, GraphEdge, AiChatMessage, ThemeMode } from '../services/api';
+import { FormattedAiMessage } from './FormattedAiMessage';
+import { EntityPropertiesTable } from './EntityPropertiesTable';
 
 export interface GraphExplorerModuleProps {
   cases: Case[];
@@ -15,11 +17,13 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<any>(null);
   const [caseFilter, setCaseFilter] = useState<string>(selectedCase || '');
+  const [graphType, setGraphType] = useState<string>('all');
   const [layoutType, setLayoutType] = useState<string>('structured');
   const [edgeLabelMode, setEdgeLabelMode] = useState<string>('clean');
   const [limit, setLimit] = useState<number>(1200);
   const [hideIsolated, setHideIsolated] = useState<boolean>(false);
-  const [physicsEnabled, setPhysicsEnabled] = useState<boolean>(false);
+  const [hideCaseLinks, setHideCaseLinks] = useState<boolean>(true);
+  const [physicsEnabled, setPhysicsEnabled] = useState<boolean>(true);
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState<boolean>(false);
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
@@ -30,13 +34,15 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
   const [aiChatLog, setAiChatLog] = useState<AiChatMessage[]>([
     {
       sender: 'bot',
-      model: 'Atlas Graph Assistant',
-      content: "Can't get inferences from this visual topology? Ask me directly to identify key operatives, money flows, or hidden links.",
+      model: 'Atlas AI Graph Extractor',
+      content: "Clumsy or cluttered graph? Tell me what to extract — e.g. \"extract only CDR graph\", \"extract person graph\", or \"extract financial flow\" — and I will isolate that sub-network on canvas for you.",
       chips: [
+        '📞 Extract only CDR graph',
+        '👥 Extract Person graph',
+        '💳 Extract Financial flow',
+        '🌐 Reset full graph',
         '🎯 Who are the main targets?',
-        '💸 Money laundering flow',
-        '🔍 Summarize graph inference',
-        '📱 Burner phone analysis'
+        '💸 Money laundering flow'
       ]
     }
   ]);
@@ -46,7 +52,8 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
   const fetchGraph = useCallback(async () => {
     setLoading(true);
     try {
-      const g = await API.get<{ nodes?: GraphNode[]; edges?: GraphEdge[] }>(`/api/graph?limit=${limit}${caseFilter ? `&case_id=${encodeURIComponent(caseFilter)}` : ''}`);
+      const url = `/api/graph?limit=${limit}&graph_type=${encodeURIComponent(graphType)}${caseFilter ? `&case_id=${encodeURIComponent(caseFilter)}` : ''}`;
+      const g = await API.get<{ nodes?: GraphNode[]; edges?: GraphEdge[] }>(url);
       setGraphNodes(g.nodes || []);
       setGraphEdges(g.edges || []);
     } catch (e: any) {
@@ -54,11 +61,15 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     } finally {
       setLoading(false);
     }
-  }, [limit, caseFilter, addToast]);
+  }, [limit, graphType, caseFilter, addToast]);
 
   useEffect(() => {
     fetchGraph();
   }, [fetchGraph]);
+
+  useEffect(() => {
+    setCaseFilter(selectedCase || '');
+  }, [selectedCase]);
 
   // Render Network Graph
   useEffect(() => {
@@ -70,7 +81,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
 
     const isLight = theme === 'light';
     const textColor = isLight ? '#0f172a' : '#cbd5e1';
-    const edgeColor = isLight ? 'rgba(51, 65, 85, 0.45)' : 'rgba(148, 163, 184, 0.4)';
+    const edgeColor = isLight ? 'rgba(148, 163, 184, 0.55)' : 'rgba(100, 116, 139, 0.45)';
 
     // Compute degrees
     const degrees: Record<string, number> = {};
@@ -88,23 +99,128 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
       seenNodeIds.add(n.id);
       const isCase = n.labels?.includes('Case');
       const isPerson = n.labels?.includes('Person');
+      const isPhone = n.labels?.includes('Phone');
+      const isTower = n.labels?.includes('CellTower');
+
+      let nodeSize = 13;
+      let nodeShape = 'dot';
+      let nodeBg = (n.labels?.[0] && LABEL_COLOR[n.labels[0]]) || '#94a3b8';
+
+      if (graphType === 'cdr') {
+        if (isPhone) { nodeSize = 18; nodeBg = '#f97316'; }
+        else if (isTower) { nodeSize = 20; nodeShape = 'triangle'; nodeBg = '#06b6d4'; }
+      } else if (graphType === 'person') {
+        nodeSize = 20;
+        nodeBg = '#3b82f6';
+      } else if (graphType === 'financial') {
+        nodeSize = 18;
+        nodeBg = '#10b981';
+      } else {
+        nodeSize = isCase ? 22 : (isPerson ? 16 : 13);
+      }
+
+      // Resolve associated person for phone if present
+      let associatedPerson = (n.properties?.associated_person_name || n.properties?.registered_owner || n.properties?.subscriber_name || n.properties?.owner_name) as string | undefined;
+      let associatedPersonId = (n.properties?.associated_person_id || n.properties?.owner_person_id) as string | undefined;
+
+      if (isPhone && !associatedPerson) {
+        // Search graph edges for an owner link
+        const ownerEdge = (graphEdges || []).find(e =>
+          (e.type === 'OWNS' || e.type === 'USES' || e.type === 'HAS_PHONE') &&
+          (e.target === n.id || e.source === n.id)
+        );
+        if (ownerEdge) {
+          const pId = ownerEdge.target === n.id ? ownerEdge.source : ownerEdge.target;
+          const pNode = (graphNodes || []).find(x => x.id === pId);
+          if (pNode && pNode.labels?.includes('Person')) {
+            associatedPerson = (pNode.properties?.name || pNode.name || pId) as string;
+            associatedPersonId = pId;
+          }
+        }
+      }
+
+      let nodeLabel = n.name || n.id;
+      if (isPhone && associatedPerson && String(associatedPerson).toLowerCase() !== 'unknown') {
+        const rawPhone = String(n.properties?.phone_number || n.name?.split('\n')[0] || n.id).trim();
+        const cleanPerson = String(associatedPerson).split('\n')[0].replace(/^\(|\)$/g, '').trim();
+        nodeLabel = `${rawPhone}\n(${cleanPerson})`;
+      }
+
+      // Build rich hover tooltip with entity metadata and communication breakdown
+      const tooltipLines: string[] = [
+        `📌 ${n.labels?.join(', ') || 'Entity'}: ${nodeLabel.replace('\n', ' ')}`,
+        `ID: ${n.id}`
+      ];
+      if (isPhone && associatedPerson && String(associatedPerson).toLowerCase() !== 'unknown') {
+        tooltipLines.push(`👤 Associated Person: ${String(associatedPerson).split('\n')[0].replace(/^\(|\)$/g, '').trim()}`);
+      }
+      if (n.properties?.role) tooltipLines.push(`Role: ${n.properties.role}`);
+      if (n.properties?.phone_number && n.properties.phone_number !== n.name) tooltipLines.push(`Phone: ${n.properties.phone_number}`);
+      if (n.properties?.risk_score !== undefined) tooltipLines.push(`Risk Score: ${n.properties.risk_score}`);
+
+      const comms = n.properties?.communications;
+      const totalCalls = Number(n.properties?.total_calls || 0);
+      if (totalCalls > 0) {
+        tooltipLines.push(`\n📞 Total Calls Logged: ${totalCalls}`);
+      }
+      if (comms && typeof comms === 'object') {
+        const commList = Object.values(comms) as any[];
+        if (commList.length > 0) {
+          tooltipLines.push(`📞 Communication Breakdown:`);
+          commList.slice(0, 10).forEach(c => {
+            const partner = c.partner_name || c.partner_id;
+            const cCount = Number(c.call_count || 1);
+            const dur = c.summary ? ` (${c.summary})` : '';
+            tooltipLines.push(`  • ${partner}: ${cCount} time${cCount > 1 ? 's' : ''}${dur}`);
+          });
+          if (commList.length > 10) {
+            tooltipLines.push(`  • ...and ${commList.length - 10} more contacts`);
+          }
+        }
+      }
+
+      const txs = n.properties?.transactions;
+      const totalTx = Number(n.properties?.total_transactions || 0);
+      const totalAmt = Number(n.properties?.total_amount_transferred || 0);
+      if (totalTx > 0) {
+        tooltipLines.push(`\n💳 Total Transactions: ${totalTx}${totalAmt > 0 ? ` (₹${Math.round(totalAmt).toLocaleString()})` : ''}`);
+      }
+      if (txs && typeof txs === 'object') {
+        const txList = Object.values(txs) as any[];
+        if (txList.length > 0) {
+          tooltipLines.push(`💳 Transaction Breakdown:`);
+          txList.slice(0, 10).forEach(t => {
+            const partner = t.partner_name || t.partner_id;
+            const tCount = Number(t.tx_count || 1);
+            const amtStr = t.summary ? ` (${t.summary})` : (t.total_amount ? ` [₹${Math.round(t.total_amount).toLocaleString()}]` : '');
+            tooltipLines.push(`  • ${partner}: ${tCount} txn${tCount > 1 ? 's' : ''}${amtStr}`);
+          });
+          if (txList.length > 10) {
+            tooltipLines.push(`  • ...and ${txList.length - 10} more accounts`);
+          }
+        }
+      }
 
       nodes.push({
         id: n.id,
-        label: n.name || n.id,
+        label: nodeLabel,
         level: getNodeLevel(n.labels),
-        title: `${n.labels?.[0] || 'Node'}: ${n.name || n.id}\nID: ${n.id}`,
-        shape: 'dot',
-        size: isCase ? 22 : (isPerson ? 16 : 12),
+        title: tooltipLines.join('\n'),
+        shape: nodeShape,
+        size: nodeSize,
+        borderWidth: 2,
+        borderWidthSelected: 3.5,
         color: {
-          background: (n.labels?.[0] && LABEL_COLOR[n.labels[0]]) || '#94a3b8',
-          border: isLight ? '#ffffff' : '#070a12',
-          highlight: { background: '#00d2ff', border: '#ffffff' }
+          background: nodeBg,
+          border: isLight ? '#ffffff' : '#1e293b',
+          highlight: { background: nodeBg, border: isLight ? '#0284c7' : '#38bdf8' },
+          hover: { background: nodeBg, border: isLight ? '#0284c7' : '#38bdf8' }
         },
         font: {
           color: textColor,
-          size: isCase ? 14 : (isPerson ? 12 : 10),
-          face: 'Inter',
+          size: (graphType === 'person' || isCase) ? 12 : (isPerson || isPhone ? 10 : 9),
+          face: 'Inter, system-ui, -apple-system, sans-serif',
+          vadjust: 3,
           strokeWidth: isLight ? 2 : 0,
           strokeColor: isLight ? '#ffffff' : 'transparent'
         }
@@ -122,28 +238,82 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
       seenEdgeIds.add(edgeId);
 
       const isCaseLink = e.type === 'INVOLVES';
+      if (hideCaseLinks && isCaseLink) return;
+
+      const callCount = Number(e.properties?.call_count || 0);
+      const txCount = Number(e.properties?.tx_count || 0);
       let label = e.type || '';
+      if (e.properties?.summary) {
+        label = String(e.properties.summary);
+      } else if (callCount > 1) {
+        label = `${callCount} calls`;
+      } else if (txCount > 1) {
+        label = `${txCount} txns`;
+      }
       if (edgeLabelMode === 'none') label = '';
       else if (edgeLabelMode === 'clean' && isCaseLink) label = '';
+
+      // Detailed edge tooltip
+      let edgeTitle = `${e.type || 'LINK'} (${e.source} → ${e.target})`;
+      if (callCount > 1) {
+        edgeTitle += `\n📞 Aggregated Calls: ${callCount} times`;
+        if (e.properties?.total_duration) {
+          edgeTitle += `\n⏱ Total Duration: ${e.properties.total_duration}`;
+        }
+      } else if (txCount > 1) {
+        edgeTitle += `\n💳 Aggregated Transactions: ${txCount} times`;
+        if (e.properties?.total_amount) {
+          edgeTitle += `\n💰 Total Transferred: ₹${Math.round(Number(e.properties.total_amount)).toLocaleString()}`;
+        }
+      } else if (e.properties?.summary) {
+        edgeTitle += `\n${e.properties.summary}`;
+      } else if (e.properties?.duration_seconds) {
+        edgeTitle += `\nDuration: ${e.properties.duration_seconds}s`;
+      } else if (e.properties?.amount) {
+        edgeTitle += `\nAmount: ₹${Math.round(Number(e.properties.amount)).toLocaleString()}`;
+      }
+
+      // Keep edges sleek, subtle, clean and crisp without bold clutter (matching reference image)
+      let edgeWidth = 0.85;
+      if (callCount > 1) {
+        edgeWidth = Math.min(0.95 + Math.log2(callCount) * 0.2, 1.8);
+      } else if (txCount > 1) {
+        edgeWidth = Math.min(0.95 + Math.log2(txCount) * 0.2, 1.8);
+      }
 
       edges.push({
         id: edgeId,
         from: e.source,
         to: e.target,
         label: label,
-        title: `${e.type || 'LINK'} (${e.source} → ${e.target})`,
-        arrows: 'to',
+        title: edgeTitle,
+        width: edgeWidth,
+        selectionWidth: 1.2,
+        hoverWidth: 1.2,
+        physics: !isCaseLink,
+        arrows: {
+          to: {
+            enabled: true,
+            scaleFactor: 0.35
+          }
+        },
         color: {
-          color: isCaseLink ? (isLight ? 'rgba(2, 132, 199, 0.35)' : 'rgba(0, 210, 255, 0.35)') : edgeColor,
-          highlight: '#00d2ff', hover: '#00d2ff'
+          color: isCaseLink
+            ? (isLight ? 'rgba(2, 132, 199, 0.3)' : 'rgba(56, 189, 248, 0.3)')
+            : (graphType === 'person' ? '#93c5fd' : edgeColor),
+          highlight: isLight ? '#0284c7' : '#38bdf8',
+          hover: isLight ? '#0284c7' : '#38bdf8'
         },
         dashes: isCaseLink,
         font: {
-          color: isLight ? '#475569' : '#94a3b8',
-          size: 9, face: 'Inter', strokeWidth: 0,
-          background: isLight ? 'rgba(255,255,255,0.85)' : 'rgba(12, 17, 30, 0.85)'
+          color: isLight ? '#334155' : '#cbd5e1',
+          size: 8.5,
+          face: 'Inter, system-ui, sans-serif',
+          strokeWidth: 0,
+          background: isLight ? 'rgba(255, 255, 255, 0.94)' : 'rgba(15, 23, 42, 0.94)',
+          align: 'horizontal'
         },
-        smooth: { enabled: true, type: 'continuous', roundness: 0.35 }
+        smooth: { enabled: true, type: 'curvedCW', roundness: 0.15 }
       });
     });
 
@@ -152,17 +322,17 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     let physicsOpts: any = {};
 
     if (layoutType === 'hierarchy_ud') {
-      layoutOpts.hierarchical = { enabled: true, direction: 'UD', sortMethod: 'directed', levelSeparation: 140, nodeSpacing: 160 };
-      physicsOpts = { enabled: physicsEnabled, solver: 'hierarchicalRepulsion', hierarchicalRepulsion: { nodeDistance: 150, centralGravity: 0.0, springLength: 120, springConstant: 0.04, damping: 0.48 } };
+      layoutOpts.hierarchical = { enabled: true, direction: 'UD', sortMethod: 'directed', levelSeparation: 220, nodeSpacing: 240 };
+      physicsOpts = { enabled: physicsEnabled, solver: 'hierarchicalRepulsion', hierarchicalRepulsion: { nodeDistance: 240, centralGravity: 0.0, springLength: 180, springConstant: 0.04, damping: 0.55 } };
     } else if (layoutType === 'hierarchy_lr') {
-      layoutOpts.hierarchical = { enabled: true, direction: 'LR', sortMethod: 'directed', levelSeparation: 170, nodeSpacing: 140 };
-      physicsOpts = { enabled: physicsEnabled, solver: 'hierarchicalRepulsion', hierarchicalRepulsion: { nodeDistance: 140, centralGravity: 0.0, springLength: 120, springConstant: 0.04, damping: 0.48 } };
+      layoutOpts.hierarchical = { enabled: true, direction: 'LR', sortMethod: 'directed', levelSeparation: 240, nodeSpacing: 220 };
+      physicsOpts = { enabled: physicsEnabled, solver: 'hierarchicalRepulsion', hierarchicalRepulsion: { nodeDistance: 220, centralGravity: 0.0, springLength: 180, springConstant: 0.04, damping: 0.55 } };
     } else if (layoutType === 'radial') {
       layoutOpts.improvedLayout = true;
-      physicsOpts = { enabled: physicsEnabled, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -70, centralGravity: 0.04, springLength: 150, springConstant: 0.08, damping: 0.55, avoidOverlap: 0.85 } };
+      physicsOpts = { enabled: physicsEnabled, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -150, centralGravity: 0.005, springLength: 260, springConstant: 0.035, damping: 0.65, avoidOverlap: 1.0 } };
     } else {
       layoutOpts.improvedLayout = true;
-      physicsOpts = { enabled: physicsEnabled, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -55, centralGravity: 0.015, springLength: 160, springConstant: 0.07, damping: 0.52, avoidOverlap: 0.90 } };
+      physicsOpts = { enabled: physicsEnabled, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -140, centralGravity: 0.003, springLength: 240, springConstant: 0.035, damping: 0.65, avoidOverlap: 1.0 } };
     }
 
     const net = new vis.Network(containerRef.current, { nodes, edges }, {
@@ -171,13 +341,13 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         ...physicsOpts,
         stabilization: {
           enabled: true,
-          iterations: 50,
+          iterations: 150,
           updateInterval: 25,
           fit: true
         }
       },
       nodes: { borderWidth: 2 },
-      edges: { width: 1.4 },
+      edges: { width: 1.0, selectionWidth: 1.4, hoverWidth: 1.4 },
       interaction: { hover: true, tooltipDelay: 100, navigationButtons: true, keyboard: true }
     });
 
@@ -190,10 +360,12 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     });
 
     net.once('stabilizationIterationsDone', () => {
-      net.setOptions({ physics: { enabled: false } });
+      // Keep physics alive with gentle forces for continuous to-and-fro oscillation
+      net.setOptions({ physics: { enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -30, centralGravity: 0.002, springLength: 200, springConstant: 0.01, damping: 0.4, avoidOverlap: 0.8 }, maxVelocity: 8, minVelocity: 0.3 } });
     });
     net.once('stabilized', () => {
-      net.setOptions({ physics: { enabled: false } });
+      // Keep physics alive with gentle forces for continuous to-and-fro oscillation
+      net.setOptions({ physics: { enabled: true, solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -30, centralGravity: 0.002, springLength: 200, springConstant: 0.01, damping: 0.4, avoidOverlap: 0.8 }, maxVelocity: 8, minVelocity: 0.3 } });
     });
 
     networkRef.current = net;
@@ -202,7 +374,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
       if (net) net.destroy();
       networkRef.current = null;
     };
-  }, [graphNodes, graphEdges, layoutType, edgeLabelMode, hideIsolated, physicsEnabled, theme, caseFilter]);
+  }, [graphNodes, graphEdges, graphType, layoutType, edgeLabelMode, hideIsolated, hideCaseLinks, physicsEnabled, theme, caseFilter]);
 
   const handleAiQuerySubmit = async (e?: React.FormEvent | null, promptOverride: string | null = null) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -213,18 +385,53 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     setAiChatLog(prev => [...prev, { sender: 'user', content: q }]);
     setAiQuerying(true);
 
+    // Client-side extraction intent detection for instant responsiveness
+    const qLower = q.toLowerCase();
+    let clientDetected: string | null = null;
+    if (qLower.includes('cdr') || qLower.includes('call') || qLower.includes('phone graph') || qLower.includes('telecom')) {
+      clientDetected = 'cdr';
+    } else if (qLower.includes('person') || qLower.includes('suspect') || qLower.includes('people') || qLower.includes('connecting person')) {
+      clientDetected = 'person';
+    } else if (qLower.includes('financial') || qLower.includes('money') || qLower.includes('bank') || qLower.includes('transfer')) {
+      clientDetected = 'financial';
+    } else if (qLower.includes('all') || qLower.includes('full graph') || qLower.includes('reset') || qLower.includes('entire graph')) {
+      clientDetected = 'all';
+    }
+
+    if (clientDetected && clientDetected !== graphType) {
+      setGraphType(clientDetected);
+      addToast(
+        clientDetected === 'cdr' ? '📞 AI Extractor: Switched view to CDR telecommunications only' :
+        clientDetected === 'person' ? '👥 AI Extractor: Switched view to Person-to-Person syndicate only' :
+        clientDetected === 'financial' ? '💳 AI Extractor: Switched view to Financial money flow only' :
+        '🌐 AI Extractor: Restored full ecosystem graph',
+        'ok'
+      );
+    }
+
     try {
-      const res = await API.post<{ ai_model?: string; answer?: string }>('/api/graph/ai-query', {
+      const res = await API.post<{ ai_model?: string; answer?: string; extracted_graph_type?: string }>('/api/graph/ai-query', {
         question: q,
         case_id: caseFilter || null,
         nodes_count: graphNodes?.length || null,
         edges_count: graphEdges?.length || null,
         selected_node_id: selectedNode?.id || null
       });
+
+      if (res.extracted_graph_type && res.extracted_graph_type !== graphType && res.extracted_graph_type !== clientDetected) {
+        setGraphType(res.extracted_graph_type);
+      }
+
       setAiChatLog(prev => [...prev, {
         sender: 'bot',
-        model: res.ai_model || 'AI Copilot',
-        content: res.answer || 'No specific inference generated.'
+        model: res.ai_model || 'Atlas AI Graph Extractor',
+        content: res.answer || 'No specific inference generated.',
+        chips: [
+          '📞 Extract only CDR graph',
+          '👥 Extract Person graph',
+          '💳 Extract Financial flow',
+          '🌐 Reset full graph'
+        ]
       }]);
     } catch (err: any) {
       setAiChatLog(prev => [...prev, {
@@ -255,23 +462,24 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
             Network Topology Explorer
           </div>
           <div className="row flex items-end gap-2.5 flex-wrap" style={{gap:'10px', alignItems:'flex-end', flexWrap:'wrap'}}>
-            <div className="field" style={{minWidth:'180px'}}>
+            <div className="field" style={{minWidth:'170px'}}>
               <label>Case Filter</label>
               <select className="control" value={caseFilter} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => { setCaseFilter(e.target.value); setSelectedCase(e.target.value || null); }}>
                 <option value="">All Ingested Cases</option>
                 {cases.map(c => <option key={c.case_id} value={c.case_id}>{esc(c.case_name || c.case_id)}</option>)}
               </select>
             </div>
-            <div className="field" style={{minWidth:'180px'}}>
+
+            <div className="field" style={{minWidth:'160px'}}>
               <label>Layout Structure</label>
               <select className="control" value={layoutType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLayoutType(e.target.value)}>
-                <option value="structured">🌟 Structured Organic (Reduced Bounce)</option>
+                <option value="structured">🌟 Structured Organic</option>
                 <option value="hierarchy_ud">🌳 Hierarchical Flow (Top-to-Bottom)</option>
                 <option value="hierarchy_lr">🏛️ Pipeline Flow (Left-to-Right)</option>
                 <option value="radial">🎯 Central Core & Radial Orbit</option>
               </select>
             </div>
-            <div className="field" style={{maxWidth:'130px'}}>
+            <div className="field" style={{maxWidth:'120px'}}>
               <label>Edge Labels</label>
               <select className="control" value={edgeLabelMode} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEdgeLabelMode(e.target.value)}>
                 <option value="clean">Clean (Hide INVOLVES)</option>
@@ -279,7 +487,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
                 <option value="none">No Edge Text</option>
               </select>
             </div>
-            <div className="field" style={{maxWidth:'110px'}}>
+            <div className="field" style={{maxWidth:'95px'}}>
               <label>Limit</label>
               <select className="control" value={limit} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLimit(Number(e.target.value))}>
                 <option value="300">300</option>
@@ -303,12 +511,56 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         </div>
 
         <div className="flex items-center justify-between gap-3.5 mb-3 flex-wrap" style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'14px', marginBottom:'12px', flexWrap:'wrap'}}>
-          <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs" style={{display:'inline-flex', alignItems:'center', gap:'7px', fontSize:'12.5px', color:'var(--text-dim)', cursor:'pointer'}}>
-            <input type="checkbox" checked={hideIsolated} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHideIsolated(e.target.checked)} style={{cursor:'pointer'}} />
-            Hide Isolated 1-Hop Pairs (Focus Connected Core)
-          </label>
-          <div className="text-xs" style={{fontSize:'12px', color:'var(--text-faint)'}}>
-            Drag nodes to inspect · Click any node or ask the AI Copilot on the right for inferences
+          <div className="flex items-center gap-2 flex-wrap" style={{display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap'}}>
+            <span className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--text-faint)', fontSize:'11px', fontWeight:700}}>Quick Extract:</span>
+            <div style={{display:'inline-flex', background:'var(--bg1)', border:'1px solid var(--border)', borderRadius:'8px', padding:'2px', gap:'2px'}}>
+              <button
+                type="button"
+                className={`neu-btn ghost ${graphType === 'all' ? 'active' : ''}`}
+                style={{padding:'4px 10px', fontSize:'11.5px', borderRadius:'6px', fontWeight:600, background: graphType === 'all' ? 'var(--accent)' : 'transparent', color: graphType === 'all' ? '#070a12' : 'var(--text)'}}
+                onClick={() => { setGraphType('all'); addToast('🌐 Showing full ecosystem graph', 'info'); }}
+              >
+                🌐 Full
+              </button>
+              <button
+                type="button"
+                className={`neu-btn ghost ${graphType === 'cdr' ? 'active' : ''}`}
+                style={{padding:'4px 10px', fontSize:'11.5px', borderRadius:'6px', fontWeight:600, background: graphType === 'cdr' ? 'var(--accent)' : 'transparent', color: graphType === 'cdr' ? '#070a12' : 'var(--text)'}}
+                onClick={() => { setGraphType('cdr'); addToast('📞 Extracted CDR telecommunications graph', 'ok'); }}
+              >
+                📞 CDR Only
+              </button>
+              <button
+                type="button"
+                className={`neu-btn ghost ${graphType === 'person' ? 'active' : ''}`}
+                style={{padding:'4px 10px', fontSize:'11.5px', borderRadius:'6px', fontWeight:600, background: graphType === 'person' ? 'var(--accent)' : 'transparent', color: graphType === 'person' ? '#070a12' : 'var(--text)'}}
+                onClick={() => { setGraphType('person'); addToast('👥 Extracted Person-to-Person syndicate graph', 'ok'); }}
+              >
+                👥 Person Only
+              </button>
+              <button
+                type="button"
+                className={`neu-btn ghost ${graphType === 'financial' ? 'active' : ''}`}
+                style={{padding:'4px 10px', fontSize:'11.5px', borderRadius:'6px', fontWeight:600, background: graphType === 'financial' ? 'var(--accent)' : 'transparent', color: graphType === 'financial' ? '#070a12' : 'var(--text)'}}
+                onClick={() => { setGraphType('financial'); addToast('💳 Extracted Financial flow graph', 'ok'); }}
+              >
+                💳 Financial Only
+              </button>
+            </div>
+            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs ml-2" style={{display:'inline-flex', alignItems:'center', gap:'7px', fontSize:'12.5px', color:'var(--text-dim)', cursor:'pointer', marginLeft:'8px'}}>
+              <input type="checkbox" checked={hideIsolated} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHideIsolated(e.target.checked)} style={{cursor:'pointer'}} />
+              Hide Isolated
+            </label>
+            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs ml-2" style={{display:'inline-flex', alignItems:'center', gap:'7px', fontSize:'12.5px', color: hideCaseLinks ? 'var(--accent)' : 'var(--text-dim)', cursor:'pointer', marginLeft:'8px'}} title="Hides the radial starburst of dashed case links so that actual transaction and call paths are completely unobstructed">
+              <input type="checkbox" checked={hideCaseLinks} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHideCaseLinks(e.target.checked)} style={{cursor:'pointer'}} />
+              Hide Case Spokes (Clean Network)
+            </label>
+          </div>
+          <div className="text-xs" style={{fontSize:'12px', color:'var(--accent)'}}>
+            {graphType === 'cdr' ? '📞 Filtered: Telephone calls & Cell Towers only (unrelated entities hidden)' :
+             graphType === 'person' ? '👥 Filtered: Person syndicate members & direct linkages only' :
+             graphType === 'financial' ? '💳 Filtered: Bank accounts & money transfer routes only' :
+             '🌐 Full Graph: Drag nodes to inspect · Or ask AI Copilot e.g. "extract only CDR graph"'}
           </div>
         </div>
 
@@ -339,7 +591,11 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
                     <span>{msg.sender === 'user' ? 'Investigator Query' : (msg.model || 'AI Copilot')}</span>
                   </div>
-                  <div>{msg.content}</div>
+                  {msg.sender === 'user' ? (
+                    <div style={{ color: 'var(--text)' }}>{msg.content}</div>
+                  ) : (
+                    <FormattedAiMessage content={msg.content} />
+                  )}
                   {msg.chips && (
                     <div className="ai-quick-chips flex flex-wrap gap-1.5 mt-2">
                       {msg.chips.map((c, cIdx) => (
@@ -391,6 +647,83 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
             <button className="neu-btn ghost transition" onClick={() => setSelectedNode(null)}>Close</button>
           </div>
           <div>
+            {(() => {
+              const isSelectedPhone = selectedNode.labels?.includes('Phone');
+              let selectedPhoneOwner = (selectedNode.properties?.associated_person_name || selectedNode.properties?.registered_owner || selectedNode.properties?.subscriber_name || selectedNode.properties?.owner_name) as string | undefined;
+              let selectedPhoneOwnerId = (selectedNode.properties?.associated_person_id || selectedNode.properties?.owner_person_id) as string | undefined;
+
+              if (isSelectedPhone && !selectedPhoneOwner) {
+                const ownerEdge = (graphEdges || []).find(e =>
+                  (e.type === 'OWNS' || e.type === 'USES' || e.type === 'HAS_PHONE') &&
+                  (e.target === selectedNode.id || e.source === selectedNode.id)
+                );
+                if (ownerEdge) {
+                  const pId = ownerEdge.target === selectedNode.id ? ownerEdge.source : ownerEdge.target;
+                  const pNode = (graphNodes || []).find(x => x.id === pId);
+                  if (pNode && pNode.labels?.includes('Person')) {
+                    selectedPhoneOwner = (pNode.properties?.name || pNode.name || pId) as string;
+                    selectedPhoneOwnerId = pId;
+                  }
+                }
+              }
+
+              if (!isSelectedPhone || !selectedPhoneOwner || String(selectedPhoneOwner).toLowerCase() === 'unknown') return null;
+
+              const cleanOwner = String(selectedPhoneOwner).split('\n')[0].replace(/^\(|\)$/g, '').trim();
+
+              return (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                    marginBottom: '16px',
+                    flexWrap: 'wrap',
+                    gap: '10px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                      👤
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', fontWeight: 650, letterSpacing: '0.04em' }}>
+                        Associated Person / Subscriber
+                      </div>
+                      <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
+                        {cleanOwner}
+                      </div>
+                      {selectedPhoneOwnerId && (
+                        <div className="mono" style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
+                          Person ID: {selectedPhoneOwnerId}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {selectedPhoneOwnerId && (
+                    <button
+                      className="neu-btn primary transition"
+                      style={{ fontSize: '12px', padding: '5px 12px' }}
+                      onClick={() => {
+                        const pNode = graphNodes.find(n => n.id === selectedPhoneOwnerId);
+                        if (pNode) {
+                          setSelectedNode(pNode);
+                        } else {
+                          openEntityModal(selectedPhoneOwnerId);
+                        }
+                      }}
+                    >
+                      Inspect Person ➔
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="flex items-center gap-3 mb-4" style={{display:'flex', alignItems:'center', gap:'12px', marginBottom:'16px'}}>
               <span className="dot" style={{width:'14px', height:'14px', background: (selectedNode.labels?.[0] && LABEL_COLOR[selectedNode.labels[0]]) || '#94a3b8', borderRadius:'50%'}}></span>
               <div>
@@ -399,17 +732,151 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
               </div>
               <span style={{marginLeft:'auto'}} className="tag plain">{selectedNode.labels?.join(', ')}</span>
             </div>
-            <div className="kv">
-              {Object.entries(selectedNode.properties || {})
-                .filter(([k]) => !['case_ids', 'created_at', 'updated_at'].includes(k))
-                .slice(0, 12)
-                .map(([k, v]) => (
-                  <div key={k}>
-                    <div className="k">{esc(k)}</div>
-                    <div className="v mono">{esc(typeof v === 'object' ? JSON.stringify(v) : v)}</div>
+            <EntityPropertiesTable properties={selectedNode.properties || {}} labels={selectedNode.labels} />
+
+            {/* Call & Communication Breakdown */}
+            {Boolean(selectedNode.properties?.communications && Object.keys(selectedNode.properties.communications).length > 0) && (
+              <div style={{ marginTop: '16px', padding: '14px 16px', borderRadius: '10px', background: 'var(--surface-hover)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '7px', color: 'var(--accent)' }}>
+                    <span>📞</span> Call & Communication Frequency Breakdown
                   </div>
-                ))}
-            </div>
+                  {selectedNode.properties?.total_calls !== undefined && (
+                    <span className="tag plain" style={{ fontWeight: 700, fontSize: '11.5px', color: 'var(--accent)', border: '1px solid var(--accent)' }}>
+                      Total Calls: {String(selectedNode.properties.total_calls)}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
+                  {Object.values((selectedNode.properties?.communications || {}) as Record<string, any>).map((c: any, cIdx: number) => {
+                    const partnerId = c.partner_id;
+                    const partnerName = c.partner_name || partnerId;
+                    const callCount = c.call_count || 1;
+                    return (
+                      <div
+                        key={cIdx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          background: 'var(--card-bg)',
+                          border: '1px solid var(--border)'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>
+                            {partnerName}
+                          </div>
+                          <div className="mono" style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
+                            ID: {partnerId}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              background: 'rgba(0, 210, 255, 0.15)',
+                              color: 'var(--accent)',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              border: '1px solid rgba(0, 210, 255, 0.3)'
+                            }}
+                          >
+                            📞 {callCount} {callCount === 1 ? 'call' : 'calls'}
+                          </span>
+                          {c.summary && (
+                            <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
+                              {c.summary}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Financial Transaction Breakdown */}
+            {Boolean(selectedNode.properties?.transactions && Object.keys(selectedNode.properties.transactions).length > 0) && (
+              <div style={{ marginTop: '16px', padding: '14px 16px', borderRadius: '10px', background: 'var(--surface-hover)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '7px', color: '#10b981' }}>
+                    <span>💳</span> Financial Transactions & Fund Flow Breakdown
+                  </div>
+                  {selectedNode.properties?.total_transactions !== undefined && (
+                    <span className="tag plain" style={{ fontWeight: 700, fontSize: '11.5px', color: '#10b981', border: '1px solid #10b981' }}>
+                      Total Txns: {String(selectedNode.properties.total_transactions)}
+                      {selectedNode.properties?.total_amount_transferred !== undefined ? ` (₹${Math.round(Number(selectedNode.properties.total_amount_transferred)).toLocaleString()})` : ''}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
+                  {Object.values((selectedNode.properties?.transactions || {}) as Record<string, any>).map((t: any, tIdx: number) => {
+                    const partnerId = t.partner_id;
+                    const partnerName = t.partner_name || partnerId;
+                    const txCount = t.tx_count || 1;
+                    return (
+                      <div
+                        key={tIdx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          background: 'var(--card-bg)',
+                          border: '1px solid var(--border)'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>
+                            {partnerName}
+                          </div>
+                          <div className="mono" style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
+                            Account: {partnerId}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              background: 'rgba(16, 185, 129, 0.15)',
+                              color: '#10b981',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              border: '1px solid rgba(16, 185, 129, 0.3)'
+                            }}
+                          >
+                            💳 {txCount} {txCount === 1 ? 'txn' : 'txns'}
+                          </span>
+                          {t.summary ? (
+                            <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
+                              {t.summary}
+                            </span>
+                          ) : t.total_amount ? (
+                            <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
+                              ₹{Math.round(Number(t.total_amount)).toLocaleString()}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2.5 justify-end mt-4" style={{marginTop:'18px', display:'flex', gap:'10px', justifyContent:'flex-end'}}>
               <button className="neu-btn primary transition" onClick={() => openEntityModal(selectedNode.id)}>View Full Entity Profile</button>
             </div>

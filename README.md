@@ -270,12 +270,16 @@ To maintain rigorous engineering integrity, here is the exact breakdown of imple
 | Capability | Status | Implementation Details |
 | :--- | :---: | :--- |
 | **Multi-Modal Graph Ingestion** | 🟢 **Implemented** | Normalizes FIRs, CDRs, Bank Wires, and CCTV ANPR into Neo4j property graph. |
+| **Specialized Subgraph Extraction** | 🟢 **Implemented** | Filter modes for CDR telecom, Person syndicate, and Financial money flows. |
+| **Call & Transaction Aggregation**| 🟢 **Implemented** | Parallel calls consolidated to `CALLED (nx)` and wires to `TRANSFERRED_TO (nx)`. |
+| **Node Explanation Tables** | 🟢 **Implemented** | Human-readable specification tables for IMEI, IFSC, VIN, carriers, and statistics. |
+| **Autonomous AI Subgraph Extraction**| 🟢 **Implemented** | Natural language intent recognition automatically switches canvas view modes. |
 | **Atomic ACID Transactions** | 🟢 **Implemented** | All graph writes wrapped in `with session.begin_transaction() as tx:` for rollback safety. |
 | **ID-First Identity Resolution**| 🟢 **Implemented** | ID-first resolution (`people_by_id`) preventing same-name suspect collisions. |
 | **Zero Hallucination & PII Filter**| 🟢 **Implemented** | No dummy entities; `NON_PERSON_WORDS` filter blocks ghost Person nodes from free text. |
 | **PDF Extraction Engine** | 🟢 **Implemented** | Integrated `pdfplumber` and `pypdf` with HTTP 422 handling for scanned/corrupt briefs. |
 | **10 Scoped Cypher Detectors** | 🟢 **Implemented** | Automated Cypher algorithms for Hawala, Burner SIMs, convoys, and co-locations. |
-| **Gemini 2.5 Flash Copilot** | 🟢 **Implemented** | Natural language graph synthesis via official Google GenAI SDK. |
+| **Gemini 2.5 Flash Copilot** | 🟢 **Implemented** | Natural language graph synthesis with inline markdown formatting. |
 | **Heuristic Fallback Engine** | 🟢 **Implemented** | Rule-based topology summarizer ensuring 100% offline uptime without API credits. |
 | **Hash-Chained Custody Ledger** | 🟢 **Implemented** | Dual-persisted SHA-256 Merkle root ledger (JSON + Neo4j Cloud `:Block` nodes). |
 | **Automated Test Suite** | 🟢 **Implemented** | 226 passing unit & integration tests running completely offline in ~4 seconds. |
@@ -439,14 +443,16 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   │   └── components/
 │   │       ├── Sidebar.tsx             # Navigation sidebar & topbar
 │   │       ├── OverviewModule.tsx      # Command Center with Chart.js analytics
-│   │       ├── GraphExplorerModule.tsx # Vis.js ForceAtlas2 interactive graph with auto-freeze
+│   │       ├── GraphExplorerModule.tsx # Vis.js ForceAtlas2 interactive graph with auto-freeze & subgraph pills
 │   │       ├── EntitySearchModule.tsx  # Multi-property entity search
 │   │       ├── ShortestPathModule.tsx  # Path analysis between entities
 │   │       ├── RankingsModule.tsx      # Centrality rankings (PageRank, Betweenness)
-│   │       ├── PatternInsightsModule.tsx # 10 forensic pattern detectors
+│   │       ├── PatternInsightsModule.tsx # 10 forensic pattern detectors & KPI analytics
 │   │       ├── BlockchainModule.tsx    # SHA-256 chain of custody ledger
 │   │       ├── CaseRegistryModule.tsx  # Case management, embed ingestion & document attachment
 │   │       ├── DataIngestionModule.tsx # JSON/CSV/PDF/narrative ingestion
+│   │       ├── EntityPropertiesTable.tsx # Detailed forensic node property specification table
+│   │       ├── FormattedAiMessage.tsx  # Rich markdown tokenizer & renderer for AI chat & insights
 │   │       └── Modals.tsx             # Entity detail, AI dossier & duplicate case alert modals
 │   ├── dist/                           # Production build output (served by FastAPI at root /)
 │   └── README.md                       # 👉 Detailed Frontend Guide
@@ -457,8 +463,18 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   ├── config.py                       # Settings & environment validation
 │   ├── logging_config.py               # Structured logging with PII masking
 │   ├── models/                         # Pydantic v2 schemas (Entities, Events, Insights)
-│   ├── routers/                        # REST API endpoint controllers
+│   ├── routers/                        # REST API endpoint controllers (cases, graph, ingest, insights, path, rankings, blockchain)
 │   ├── services/                       # Graph writers, Detectors, Blockchain & AI
+│   │   ├── normalizer.py               # E.164 phone & account identifier normalization
+│   │   ├── evidence_store.py           # Granular CDR and transaction storage & retrieval
+│   │   ├── evidence_relationship_engine.py # Evidence-backed typed relationship derivation
+│   │   ├── gemini_service.py           # Gemini 2.5 Flash LLM with autonomous subgraph intent extraction
+│   │   ├── graph_service.py            # Subgraph extraction (CDR/Person/Financial), call/tx aggregation, dossiers
+│   │   ├── blockchain_service.py       # Cryptographic evidence ledger, Merkle roots, and chain verification
+│   │   ├── scoped_detectors.py         # Case-scoped Cypher queries for all 10 detectors
+│   │   ├── delta_processor.py          # Atomic incremental event batch processor with rollback safety
+│   │   ├── ranking_service.py          # Degree, Weighted Degree, Cross-Case, and GDS centrality algorithms
+│   │   └── path_service.py             # Shortest path traversal with case-insensitive name/alias resolution
 │   └── README.md                       # 👉 Detailed Backend Architecture Guide
 │
 ├── dataset/                            # 📂 Forensic Case Evidence Payloads

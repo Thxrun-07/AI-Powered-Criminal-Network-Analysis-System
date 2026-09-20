@@ -476,6 +476,13 @@ export function CaseRegistryModule({
               <button className="neu-btn ghost transition" onClick={() => changeView('graph')}>
                 View in Graph Explorer →
               </button>
+              <button
+                className="neu-btn ghost danger transition hover:opacity-80"
+                style={{ padding: '7px 12px', fontSize: '13px' }}
+                onClick={() => promptDeleteCase(selectedCase!, caseDetail?.case_name || selectedCase!)}
+              >
+                🗑️ Delete Case
+              </button>
             </div>
           </div>
 
