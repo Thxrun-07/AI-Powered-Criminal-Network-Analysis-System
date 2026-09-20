@@ -13,9 +13,10 @@
 <!-- 📡 PROTOTYPE VERIFICATION CAPSULES                                  -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <p align="center">
+  <img src="https://img.shields.io/badge/VERSION-1.0-00F5D4?style=for-the-badge&logo=semanticrelease&logoColor=black" alt="Version" />
   <img src="https://img.shields.io/badge/PROTOTYPE_STATUS-EVALUATION_READY_🟢-00F5D4?style=for-the-badge&logo=radar&logoColor=black" alt="Status" />
   <img src="https://img.shields.io/badge/TEST_HARNESS-226%20PASSED%20(100%25)-00E676?style=for-the-badge&logo=pytest&logoColor=white" alt="Tests" />
-  <img src="https://img.shields.io/badge/AI_COPILOT-GEMINI_2.5_FLASH_+_HEURISTICS-7928CA?style=for-the-badge&logo=google&logoColor=white" alt="Gemini AI" />
+  <img src="https://img.shields.io/badge/AI_COPILOT-HOSTED_LLM_+_HEURISTICS-7928CA?style=for-the-badge&logo=openai&logoColor=white" alt="AI Copilot" />
   <img src="https://img.shields.io/badge/GRAPH_CORE-NEO4J_5.27_AURA-008CC1?style=for-the-badge&logo=neo4j&logoColor=white" alt="Neo4j" />
   <img src="https://img.shields.io/badge/CHAIN_OF_CUSTODY-SHA--256_HASH_CHAIN-FF9900?style=for-the-badge&logo=blockchaindotcom&logoColor=white" alt="Evidence Ledger" />
 </p>
@@ -31,7 +32,7 @@
 
 <p align="center">
   <b>An AI-assisted criminal network analysis prototype engineered for law enforcement, intelligence analysts, and cyber-crime task forces.<br/>
-  Harmonizes fragmented multi-jurisdiction records (FIRs, CDRs, CCTV ANPR, Banking Wires) into a property graph, executes 10 algorithmic Cypher detectors, anchors forensic integrity in a hash-chained SHA-256 ledger, and assists investigators via an interactive Gemini 2.5 Flash Graph Copilot with offline heuristic fallback.</b>
+  Harmonizes fragmented multi-jurisdiction records (FIRs, CDRs, CCTV ANPR, Banking Wires) into a property graph, executes 10 algorithmic Cypher detectors, anchors forensic integrity in a hash-chained SHA-256 ledger, and assists investigators via an interactive Hosted LLM Graph Copilot with offline heuristic fallback.</b>
 </p>
 
 </div>
@@ -67,7 +68,7 @@ Judges and evaluators can verify the complete end-to-end investigative workflow 
 ```
 [Step 1: Start System] ──► [Step 2: Ingest Case 001] ──► [Step 3: Ingest Case 002 (Bridge Discovered)]
                                                                     │
-[Step 6: Verify Ledger] ◄── [Step 5: Query Gemini Copilot] ◄── [Step 4: Run 10 Detectors]
+[Step 6: Verify Ledger] ◄── [Step 5: Query AI Copilot] ◄── [Step 4: Run 10 Detectors]
 ```
 
 ### Step 1: Launch the Application
@@ -106,7 +107,7 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/insights" -Method Get
 ```
 *Evaluator Observation*: Returns 10 detected patterns in milliseconds, flagging Hawala layering, Burner SIM swapping, and cell tower co-location.
 
-### Step 5: Interrogate the Gemini AI Copilot
+### Step 5: Interrogate the AI Copilot
 Click the **"Ask AI"** button on the dashboard or query via REST API:
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:8000/api/graph/ai-query" -Method Post `
@@ -145,19 +146,19 @@ To prevent incorrect identity merging, the prototype uses **deterministic primar
 
 ---
 
-## 🤖 Gemini 2.5 Flash Graph Copilot
+## 🤖 Hosted LLM Graph Copilot
 
-Field investigators and detectives do not have time to construct complex Cypher graph queries. The **Gemini 2.5 Flash Copilot** is docked directly inside the interactive canvas (`#graphAiPanel`), translating human questions into instant topological and forensic intelligence.
+Field investigators and detectives do not have time to construct complex Cypher graph queries. The **Hosted LLM Copilot** is docked directly inside the interactive canvas (`#graphAiPanel`), translating human questions into instant topological and forensic intelligence.
 
 <div align="center">
-  <img src="docs/assets/dashboard_live_demo.png" width="100%" alt="Interactive Graph Explorer with Docked Gemini AI Copilot" />
-  <p><i>Figure 2: Interactive ForceAtlas2 Graph Topology with docked Gemini AI Copilot chat drawer and quick prompt chips.</i></p>
+  <img src="docs/assets/dashboard_live_demo.png" width="100%" alt="Interactive Graph Explorer with Docked AI Copilot" />
+  <p><i>Figure 2: Interactive ForceAtlas2 Graph Topology with docked AI Copilot chat drawer and quick prompt chips.</i></p>
 </div>
 
 <br/>
 
 <div align="center">
-  <img src="docs/assets/copilot_terminal.svg" width="100%" alt="Interactive Gemini Copilot Terminal" />
+  <img src="docs/assets/copilot_terminal.svg" width="100%" alt="Interactive AI Copilot Terminal" />
 </div>
 
 <br/>
@@ -170,9 +171,9 @@ Field investigators and detectives do not have time to construct complex Cypher 
 
 ---
 
-## 🔑 Gemini API Key Configuration & Dual-Mode Fallback
+## 🔑 LLM API Key Configuration & Dual-Mode Fallback
 
-The platform uses Google Gemini 2.5 Flash. You can obtain a free key and rotate it at any time with zero downtime.
+The platform uses a hosted LLM service for AI intelligence. You can configure your API key and rotate it at any time with zero downtime.
 
 ### Step 1: Obtain a Free Key
 1. Visit **[Google AI Studio](https://aistudio.google.com/app/apikey)**.
@@ -183,8 +184,8 @@ The platform uses Google Gemini 2.5 Flash. You can obtain a free key and rotate 
 Edit or create your `.env` file in the project root:
 ```ini
 # .env
-GEMINI_API_KEY=AIzaSyYourGeneratedGeminiKeyHere
-GEMINI_MODEL=gemini-2.5-flash
+LLM_API_KEY=your_hosted_llm_api_key_here
+LLM_MODEL=your-model-name
 ```
 
 ### Step 3: Restart Backend
@@ -196,15 +197,15 @@ uvicorn backend.main:app --reload
 
 ### 🛡️ Dual-Mode Intelligence & Failover Mechanics
 > [!NOTE]
-> **What happens if your free Gemini credit expires or Google returns HTTP 429 Quota Exceeded?**
+> **What happens if your LLM API credit expires or the provider returns HTTP 429 Quota Exceeded?**
 >
-> The system implements a **fail-soft heuristic architecture** (`backend/services/gemini_service.py`):
+> The system implements a **fail-soft heuristic architecture** (`backend/services/llm_service.py`):
 > 1. If the API key is missing, expired, or rate-limited, the system **never crashes, never fails, and displays zero error alerts**.
 > 2. It immediately shifts to an internal **Deterministic Graph Heuristics Engine**:
 >    - Dynamically evaluates node degree centrality, PageRank, and betweenness scores.
 >    - Scans active pattern detections (Hawala, SIM swaps, co-locations).
 >    - Generates a structured, evidence-backed investigative briefing directly in the chat panel.
-> 3. Once a new valid key is provided in `.env`, the system automatically resumes utilizing Gemini 2.5 Flash.
+> 3. Once a new valid key is provided in `.env`, the system automatically resumes utilizing the hosted LLM.
 
 ---
 
@@ -279,13 +280,13 @@ To maintain rigorous engineering integrity, here is the exact breakdown of imple
 | **Zero Hallucination & PII Filter**| 🟢 **Implemented** | No dummy entities; `NON_PERSON_WORDS` filter blocks ghost Person nodes from free text. |
 | **PDF Extraction Engine** | 🟢 **Implemented** | Integrated `pdfplumber` and `pypdf` with HTTP 422 handling for scanned/corrupt briefs. |
 | **10 Scoped Cypher Detectors** | 🟢 **Implemented** | Automated Cypher algorithms for Hawala, Burner SIMs, convoys, and co-locations. |
-| **Gemini 2.5 Flash Copilot** | 🟢 **Implemented** | Natural language graph synthesis with inline markdown formatting. |
+| **Hosted LLM Copilot** | 🟢 **Implemented** | Natural language graph synthesis with inline markdown formatting. |
 | **Heuristic Fallback Engine** | 🟢 **Implemented** | Rule-based topology summarizer ensuring 100% offline uptime without API credits. |
 | **Hash-Chained Custody Ledger** | 🟢 **Implemented** | Dual-persisted SHA-256 Merkle root ledger (JSON + Neo4j Cloud `:Block` nodes). |
 | **Automated Test Suite** | 🟢 **Implemented** | 226 passing unit & integration tests running completely offline in ~4 seconds. |
 | **React 19 + TypeScript Frontend** | 🟢 **Implemented** | Fully typed `.tsx` codebase with `strict: true`, typed props/state/refs, and zero `any` leaks. Built with Vite 5. |
 | **Tailwind CSS Integration** | 🟢 **Implemented** | Utility-first CSS framework with custom Atlas design tokens, glassmorphism, and neomorphic components. |
-| **Interactive Web Dashboard** | 🟢 **Implemented** | Vis.js ForceAtlas2 network explorer with post-stabilization freeze and docked Copilot drawer. |
+| **Interactive Web Dashboard** | 🟢 **Implemented** | Vis.js ForceAtlas2 network explorer with live physics oscillation and docked Copilot drawer. |
 | **Duplicate Case Upload Guard** | 🟢 **Implemented** | Pre-upload inspection and backend self-reporting popup modal for already-ingested cases. |
 | **Distributed Consensus** | 🔵 **Future Roadmap** | Multi-node Raft/PBFT consensus across separate agency jurisdictions. |
 | **Probabilistic Fuzzy NER** | 🔵 **Future Roadmap** | Legal NER fine-tuning for resolving fuzzy suspect name variants. |
@@ -300,11 +301,11 @@ To maintain rigorous engineering integrity, here is the exact breakdown of imple
 | **Type System** | TypeScript | 5.6 | `strict: true`, typed props/state/refs/events across all `.tsx` files |
 | **CSS Framework** | Tailwind CSS | 3.4 | Utility-first styling with custom Atlas design tokens |
 | **Bundler** | Vite | 5.x | Lightning-fast HMR and optimized production builds (`tsc && vite build`) |
-| **Graph Visualization** | Vis.js Network | 9.1 | ForceAtlas2-based interactive network canvas with auto-freeze |
+| **Graph Visualization** | Vis.js Network | 9.1 | ForceAtlas2-based interactive network canvas with live physics oscillation |
 | **Charts** | Chart.js | 4.4 | Bar and doughnut charts for ecosystem metrics |
 | **Backend** | FastAPI | 0.100+ | Async Python REST API with Pydantic v2 validation |
 | **Graph Database** | Neo4j Aura | 5.27 | Cloud-hosted property graph with Cypher query engine |
-| **AI Copilot** | Google Gemini | 2.5 Flash | Natural language graph intelligence with heuristic fallback |
+| **AI Copilot** | Hosted LLM | Cloud API | Natural language graph intelligence with heuristic fallback |
 | **PDF Extraction** | pdfplumber & pypdf | 0.10+ / 4.0+ | Forensic FIR text extraction from documents and briefs |
 | **Evidence Integrity** | SHA-256 | — | Dual-persisted hash-chained Merkle root ledger |
 | **Testing** | Pytest | 9.1 | 226 unit & integration tests, 100% offline execution |
@@ -336,7 +337,7 @@ flowchart TD
     end
 
     subgraph COPILOT ["🤖 Intelligent Reasoning Layer"]
-        H[Google Gemini 2.5 Flash Copilot]:::ai
+        H[Hosted LLM Copilot]:::ai
         I[Fail-Soft Graph Heuristic Engine]:::ai
     end
 
@@ -443,7 +444,7 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   │   └── components/
 │   │       ├── Sidebar.tsx             # Navigation sidebar & topbar
 │   │       ├── OverviewModule.tsx      # Command Center with Chart.js analytics
-│   │       ├── GraphExplorerModule.tsx # Vis.js ForceAtlas2 interactive graph with auto-freeze & subgraph pills
+│   │       ├── GraphExplorerModule.tsx # Vis.js ForceAtlas2 interactive graph with live physics oscillation & subgraph pills
 │   │       ├── EntitySearchModule.tsx  # Multi-property entity search
 │   │       ├── ShortestPathModule.tsx  # Path analysis between entities
 │   │       ├── RankingsModule.tsx      # Centrality rankings (PageRank, Betweenness)
@@ -468,7 +469,7 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   │   ├── normalizer.py               # E.164 phone & account identifier normalization
 │   │   ├── evidence_store.py           # Granular CDR and transaction storage & retrieval
 │   │   ├── evidence_relationship_engine.py # Evidence-backed typed relationship derivation
-│   │   ├── gemini_service.py           # Gemini 2.5 Flash LLM with autonomous subgraph intent extraction
+│   │   ├── llm_service.py              # Hosted LLM with autonomous subgraph intent extraction
 │   │   ├── graph_service.py            # Subgraph extraction (CDR/Person/Financial), call/tx aggregation, dossiers
 │   │   ├── blockchain_service.py       # Cryptographic evidence ledger, Merkle roots, and chain verification
 │   │   ├── scoped_detectors.py         # Case-scoped Cypher queries for all 10 detectors
@@ -498,7 +499,7 @@ AI-Powered-Criminal-Network-Analysis-System/
 └── docs/                               # 📑 Technical Specifications & Runbooks
     ├── assets/                         # 🎨 High-Res Vector SVG HUD Visuals & Screenshots
     │   ├── command_center_dashboard.png # Command Center overview & active cases
-    │   ├── dashboard_live_demo.png     # Graph Explorer & docked Gemini Copilot
+    │   ├── dashboard_live_demo.png     # Graph Explorer & docked AI Copilot
     │   ├── classified_hud_banner.svg   # Level-4 Top Secret HUD with Radar & Frequency Waves
     │   ├── tactical_dossier.svg        # Classified Suspect Dossier & Biometric Laser Scan
     │   ├── copilot_terminal.svg        # Glassmorphism Copilot Interaction Window

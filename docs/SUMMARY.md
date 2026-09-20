@@ -17,7 +17,7 @@ The **Crime & Case Graph Intelligence Platform** serves as an enterprise-grade *
    - Every ingested case and forensic document (FIR, CDR, Bank Statement, Surveillance Log) is cryptographically hashed (SHA-256) and committed as a verifiable block in an immutable ledger with Merkle root verification.
    - Built-in tamper-detection audits live Neo4j graph state against on-chain Merkle roots.
 5. **AI Forensic Intelligence Dossier (`GET/POST /api/cases/{case_id}/ai-insights`)**:
-   - Gathers multi-hop subgraph context and synthesizes an executive intelligence assessment using **Google Gemini 2.5 Flash** (with automatic heuristic fallback when offline).
+   - Gathers multi-hop subgraph context and synthesizes an executive intelligence assessment using **Hosted LLM** (with automatic heuristic fallback when offline).
    - Generates executive summaries, modus operandi analysis, key target suspects, critical anomalies, and actionable next steps under law enforcement procedures (e.g., Section 91 CrPC notices, tower dump warrants).
 6. **Ambiguity-Safe Shortest-Path Discovery (`GET /api/cases/shortest-path`)**:
    - Discovers multi-hop relational chains connecting suspects to victims across communications, financial transactions, co-locations, and asset ownership.
@@ -80,7 +80,7 @@ SIH-189-completed/
 │   │   ├── delta_processor.py          # Atomic incremental event batch processor with rollback safety
 │   │   ├── evidence_relationship_engine.py # Evidence-backed typed relationship derivation
 │   │   ├── evidence_store.py           # Granular CDR and transaction storage & retrieval
-│   │   ├── gemini_service.py           # Forensic AI intelligence brief synthesis via Gemini 2.5 Flash
+│   │   ├── llm_service.py              # Forensic AI intelligence brief synthesis via Hosted LLM
 │   │   ├── graph_service.py            # Subgraph extraction (CDR/Person/Financial), call/tx aggregation, dossiers
 │   │   ├── graph_writes.py             # Single source of truth for all Neo4j Cypher MERGE/UNWIND statements
 │   │   ├── ingestion_engine.py         # Multi-format heuristic & LLM parser for CDR/Bank CSVs, FIR PDFs & text
@@ -241,11 +241,11 @@ The platform incorporates an immutable, tamper-evident audit ledger (`app/servic
 
 ---
 
-## 7. Dual AI Intelligence (Gemini 2.5 Flash)
+## 7. Dual AI Intelligence (Hosted LLM)
 
 ### 7.1 Case Intelligence Dossier (`GET/POST /api/cases/{case_id}/ai-insights`)
 1. Subgraph context (suspect profiles, phone connections, transaction paths, locations) is queried from Neo4j.
-2. Formatted data is submitted to **Google Gemini 2.5 Flash** with structured JSON output instructions.
+2. Formatted data is submitted to **Hosted LLM** with structured JSON output instructions.
 3. The response synthesizes an authoritative intelligence assessment:
    - **Executive Summary**: Strategic overview of syndicate hierarchy and operational scope.
    - **Risk Level**: `CRITICAL`, `HIGH`, `MEDIUM`, or `LOW`.
@@ -253,7 +253,7 @@ The platform incorporates an immutable, tamper-evident audit ledger (`app/servic
    - **Key Suspects**: Primary targets with specific evidence linkage.
    - **Critical Anomalies**: Investigative red flags discovered in graph telemetry.
    - **Actionable Leads**: Concrete procedural steps (e.g., Section 91 CrPC notices, CDR tower dumps).
-4. **Heuristic Fallback**: If Gemini is offline or unconfigured, an intelligent heuristic engine synthesizes a baseline dossier from graph topology.
+4. **Heuristic Fallback**: If the LLM is offline or unconfigured, an intelligent heuristic engine synthesizes a baseline dossier from graph topology.
 
 ### 7.2 Interactive Graph AI Copilot (`POST /api/graph/ai-query`)
 - Docks directly beside the interactive Vis.js graph canvas in the Analyst Dashboard ("Atlas").
@@ -265,7 +265,7 @@ The platform incorporates an immutable, tamper-evident audit ledger (`app/servic
 - **Free Tier Limits**: Google AI Studio free tier enforces rate limits (e.g. 15 requests per minute, daily limits). Once exceeded, requests throw HTTP 429 `RESOURCE_EXHAUSTED`.
 - **Replacing the Key**:
   1. Generate a new API key at [Google AI Studio](https://aistudio.google.com/app/apikey).
-  2. Update `GEMINI_API_KEY=AIzaSy...` in `.env`, or override via terminal (`$env:GEMINI_API_KEY="..."` on Windows or `export GEMINI_API_KEY="..."` on Linux/macOS).
+  2. Update `LLM_API_KEY=...` in `.env`, or override via terminal (`$env:LLM_API_KEY="..."` on Windows or `export LLM_API_KEY="..."` on Linux/macOS).
   3. Restart or hot-reload Uvicorn.
 - **Zero-Downtime Guarantee**: If the key is not replaced or offline, Atlas **never crashes or returns 500 errors**. The backend automatically intercepts the quota exception and seamlessly switches to the internal **Demonstration Heuristic Graph Inference Engine**, calculating answers directly from live Neo4j degree centrality, transaction paths, and communication hubs.
 

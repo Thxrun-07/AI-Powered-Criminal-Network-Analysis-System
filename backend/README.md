@@ -1,6 +1,6 @@
 # ⚙️ Backend Core (Graph Intelligence & REST API Engine)
 
-The `backend/` directory houses the core intelligence engine for the **AI-Powered Criminal Network Analysis System**, implemented in Python 3.11+ using **FastAPI** and **Neo4j**. It orchestrates forensic graph persistence, real-time event ingestion, 10 suspicious pattern detectors, ambiguity-safe shortest path calculations, graph centrality rankings, cryptographic chain-of-custody ledgers, and the **Gemini 2.5 Flash AI Copilot**.
+The `backend/` directory houses the core intelligence engine for the **AI-Powered Criminal Network Analysis System**, implemented in Python 3.11+ using **FastAPI** and **Neo4j**. It orchestrates forensic graph persistence, real-time event ingestion, 10 suspicious pattern detectors, ambiguity-safe shortest path calculations, graph centrality rankings, cryptographic chain-of-custody ledgers, and the **Hosted LLM AI Copilot**.
 
 ---
 
@@ -27,7 +27,7 @@ backend/
 │   ├── blockchain.py      # Chain-of-custody blocks & cryptographic verification
 │   ├── cases.py           # Multi-file case ingestion & deletion
 │   ├── events.py          # Real-time event streaming (`POST /api/events`)
-│   ├── graph.py           # Topology data, search & Gemini Copilot endpoint
+│   ├── graph.py           # Topology data, search & AI Copilot endpoint
 │   ├── health.py          # Liveness probes & database reset utilities
 │   ├── ingest.py          # Unified case data ingestion
 │   ├── insights.py        # 10 automated pattern detection queries
@@ -39,7 +39,7 @@ backend/
 │   ├── delta_processor.py     # Real-time event application with idempotency
 │   ├── evidence_relationship_engine.py # Evidence-backed typed relationship derivation
 │   ├── evidence_store.py      # Granular CDR and transaction storage & retrieval
-│   ├── gemini_service.py      # Gemini 2.5 Flash LLM with offline heuristic fallback
+│   ├── llm_service.py         # Hosted LLM with offline heuristic fallback
 │   ├── graph_service.py       # Graph retrieval, subgraph extraction & call/tx aggregation
 │   ├── graph_writes.py        # Batched atomic Cypher writes with business keys
 │   ├── ingestion_engine.py    # Forensic case entity & relation extraction
@@ -67,8 +67,8 @@ backend/
   - Consolidates repeated phone calls into single `CALLED (nx)` edges with duration and history.
   - Consolidates repeated fund transfers into single `TRANSFERRED_TO (nx)` edges with accumulated sums (`₹X,XXX`) and transaction details.
 
-### 2. Gemini AI Copilot & Intent Extraction (`services/gemini_service.py`)
-- **Model**: Google Gemini 2.5 Flash via the official `google-genai` SDK.
+### 2. AI Copilot & Intent Extraction (`services/llm_service.py`)
+- **Model**: Hosted LLM via cloud API integration.
 - **Context Injection**: Dynamically compiles graph statistics (node counts, edge types, top suspects, flagged patterns, recent cases) into the LLM system prompt.
 - **Autonomous Subgraph Extraction**: Recognizes user intent (e.g., *"extract only CDR graph"*, *"person graph"*, *"extract financial flow"*) and returns `extracted_graph_type` to switch the UI canvas dynamically.
 - **Zero-Downtime Heuristic Fallback**: If the API key is not configured, expired, or rate-limited (`429 Quota Exceeded`), the service automatically switches to a deterministic graph topology analysis algorithm. Requests always succeed with HTTP 200.

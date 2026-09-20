@@ -1,7 +1,7 @@
 # 🛡️ Atlas Criminal Network Intelligence: System Architecture & Operations Guide
 
 > **Official Technical Reference & Operations Runbook**  
-> *Authoritative guide covering system functionality, internal mechanics, Neo4j graph topology, Gemini AI Copilot, rate-limit resilience, and operational procedures.*
+> *Authoritative guide covering system functionality, internal mechanics, Neo4j graph topology, AI Copilot, rate-limit resilience, and operational procedures.*
 
 ---
 
@@ -9,7 +9,7 @@
 1. [System Overview & Mission](#1-system-overview--mission)
 2. [What the System Does & How It Does It](#2-what-the-system-does--how-it-does-it)
 3. [System Architecture & Data Flow](#3-system-architecture--data-flow)
-4. [Google Gemini AI: Rate Limits, Quota Expiry & Fallback Engine](#4-google-gemini-ai-rate-limits-quota-expiry--fallback-engine)
+4. [Hosted LLM: Rate Limits, Quota Expiry & Fallback Engine](#4-hosted-llm-rate-limits-quota-expiry--fallback-engine)
 5. [Step-by-Step Instructions: Managing & Replacing API Keys](#5-step-by-step-instructions-managing--replacing-api-keys)
 6. [Complete Operational Instructions (Runbook)](#6-complete-operational-instructions-runbook)
 7. [Troubleshooting & Common Scenarios](#7-troubleshooting--common-scenarios)
@@ -30,7 +30,7 @@ Criminal syndicates operate across jurisdictional boundaries, frequently splitti
 Atlas ingests both structured evidence (Call Detail Records CSVs, Bank Transaction CSVs) and unstructured forensic narratives (FIR text files, intelligence briefs), resolves entity identities into a unified Neo4j Knowledge Graph, executes 10 automated algorithmic detectors, and provides:
 1. **Interactive Topological Graph Exploration** with tuned elastic physics and deterministic seeds.
 2. **Automated Forensic Anomaly Detection** (circular laundering, mule accounts, burner phone relays).
-3. **Executive AI Case Summaries** (powered by Google Gemini 2.5 Flash).
+3. **Executive AI Case Summaries** (powered by Hosted LLM).
 4. **Interactive Graph AI Copilot** docked in the Graph Explorer, enabling investigators to ask conversational questions about the visible graph when visual inference is difficult.
 
 ---
@@ -58,7 +58,7 @@ Atlas ingests both structured evidence (Call Detail Records CSVs, Bank Transacti
   - `[:OWNS]`, `[:ASSOCIATED_WITH]`, `[:INVOLVES]`, `[:REGISTERED_TO]`
 
 ### 2.3 Graph Visualization, Specialized Subgraphs & Edge Aggregation
-- **Vis.js Network Canvas**: Interactive, draggable, zoomable WebGL/HTML5 canvas with post-stabilization freeze to prevent CPU thrashing.
+- **Vis.js Network Canvas**: Interactive, draggable, zoomable WebGL/HTML5 canvas with live physics oscillation to prevent CPU thrashing.
 - **Dedicated Subgraph Extraction Modes**:
   - *🌐 Full Ecosystem*: Complete holistic network view.
   - *📞 CDR Telecom Graph*: Filters out bank accounts and non-telecom clutter; isolates caller-callee links, durations, and connected cell tower triangles (`#06b6d4`).
@@ -111,7 +111,7 @@ flowchart TB
     subgraph Presentation_Layer["Presentation Layer (Client Browser - Vanilla JS SPA)"]
         UI["Modern Glass/Neumorphic UI (index.html)"]
         VisJS["Vis.js Graph Network (ForceAtlas2 Engine)"]
-        CopilotUI["Gemini AI Copilot Side-Box (Interactive Inference)"]
+        CopilotUI["AI Copilot Side-Box (Interactive Inference)"]
         CaseRegistry["Case Registry & Summary Modals"]
     end
 
@@ -125,7 +125,7 @@ flowchart TB
 
     subgraph Business_Engines["Intelligence & Forensic Services"]
         GraphService["GraphService (Subgraphs, 360 Profiles, Search)"]
-        GeminiService["GeminiService (Gemini 2.5 + Fallback Engine)"]
+        LLMService["LLMService (Hosted LLM + Fallback Engine)"]
         Detectors["ScopedDetectors (10 Forensic Anomaly Detectors)"]
         RankingService["RankingService (Centrality & Relevance)"]
         IngestionEngine["IngestionEngine (CSV/FIR Parsing & Deduplication)"]
@@ -133,7 +133,7 @@ flowchart TB
 
     subgraph Storage_and_AI["Data & Intelligence Backends"]
         Neo4j[("Neo4j Graph Database (Aura / Local Bolt)")]
-        GeminiAPI["Google Gemini 2.5 Flash API (Cloud)"]
+        HostedLLMAPI["Hosted LLM API (Cloud)"]
         FallbackEngine["Intelligent Fallback Demonstration Engine (Internal)"]
     end
 
@@ -148,24 +148,24 @@ flowchart TB
     MainApp --> RouterHealth
 
     RouterGraph --> GraphService
-    RouterGraph --> GeminiService
-    RouterInsights --> GeminiService
+    RouterGraph --> LLMService
+    RouterInsights --> LLMService
     RouterInsights --> Detectors
     RouterCases --> RankingService
 
     GraphService <-->|Cypher Bolt Driver| Neo4j
     Detectors <-->|Pattern Queries| Neo4j
-    GeminiService -->|Live Context Generation| Neo4j
-    GeminiService -->|HTTP API Call| GeminiAPI
-    GeminiService -.->|Quota 429 Fallback| FallbackEngine
+    LLMService -->|Live Context Generation| Neo4j
+    LLMService -->|HTTP API Call| HostedLLMAPI
+    LLMService -.->|Quota 429 Fallback| FallbackEngine
 ```
 
 ---
 
-## 4. Google Gemini AI: Rate Limits, Quota Expiry & Fallback Engine
+## 4. Hosted LLM: Rate Limits, Quota Expiry & Fallback Engine
 
 ### 4.1 Understanding Google's Free-Tier Quota
-Google AI Studio provides free API keys with standard free-tier limits for `gemini-2.5-flash`:
+The hosted LLM provider offers API keys with standard rate limits:
 - **Requests Per Minute (RPM)**: 15 RPM
 - **Requests Per Day (RPD)**: 20–50 RPD (Free-tier quotas vary by Google Cloud project)
 - **Token Limits**: 1,000,000 TPM
@@ -184,22 +184,22 @@ When the daily limit is exhausted, Google's API returns:
 ### 4.2 How Atlas Handles Quota Expiration: Zero-Crash Architecture
 In most applications, a `429 RESOURCE_EXHAUSTED` causes an HTTP 500 error, broken frontend modals, or red failure text.
 
-**In Atlas, your demonstration and operations NEVER break.** Both `GeminiService.generate_case_brief` and `GeminiService.answer_graph_query` are wrapped in an autonomous safety harness:
+**In Atlas, your demonstration and operations NEVER break.** Both `LLMService.generate_case_brief` and `LLMService.answer_graph_query` are wrapped in an autonomous safety harness:
 
 ```python
 try:
-    # 1. Attempt Gemini 2.5 Flash cloud generation
-    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-    return format_gemini_response(response.text)
+    # 1. Attempt Hosted LLM cloud generation
+    response = client.models.generate_content(model="hosted-llm", contents=prompt)
+    return format_llm_response(response.text)
 except Exception as e:
     # 2. Automatically caught: Logged as a warning, no crash!
-    logger.warning(f"Gemini API limit reached ({e}). Engaging Demonstration Inference Engine.")
+    logger.warning(f"LLM API limit reached ({e}). Engaging Demonstration Inference Engine.")
     # 3. Executes deterministic graph topology calculations from live Neo4j database
     return compute_heuristic_graph_inference(session, case_id, question)
 ```
 
 ### 4.3 What the Fallback Engine Does Under the Hood
-When Gemini is rate-limited or offline, the fallback engine:
+When the LLM is rate-limited or offline, the fallback engine:
 1. Queries the active Neo4j database for top suspects by degree centrality.
 2. Identifies communication hubs (telecom lines with the highest call edges).
 3. Identifies financial accounts and recent transaction flows.
@@ -208,7 +208,7 @@ When Gemini is rate-limited or offline, the fallback engine:
    - **Financial / Laundering**: Identifies monitored accounts, flow patterns, and mule accounts.
    - **Telecom / Burners**: Identifies active subscriber lines and call patterns.
    - **General Inferences / Structure**: Explains the hub-and-spoke structure in clear detective terms.
-5. Badges the response with `[Gemini 2.5 Flash (Demonstration Engine)]` so observers know real graph data is answering their questions.
+5. Badges the response with `[Hosted LLM (Demonstration Engine)]` so observers know real graph data is answering their questions.
 
 ---
 
@@ -232,30 +232,30 @@ You have three methods to set the key (in order of priority):
 #### Method A: Inside `.env` File (Recommended & Permanent)
 Open the `.env` file in the project root (`c:\Users\shinc\projects\SIH-189-completed\.env`) in any text editor and update:
 ```env
-GEMINI_API_KEY=AIzaSyYourNewApiKeyHere
+LLM_API_KEY=your_new_api_key_here
 ```
 Save the file.
 
 #### Method B: Temporary Environment Variable in PowerShell
 Before starting the backend, set the variable in your current terminal:
 ```powershell
-$env:GEMINI_API_KEY="AIzaSyYourNewApiKeyHere"
+$env:LLM_API_KEY="your_new_api_key_here"
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 #### Method C: Linux / Mac Bash
 ```bash
-export GEMINI_API_KEY="AIzaSyYourNewApiKeyHere"
+export LLM_API_KEY="your_new_api_key_here"
 uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ### Step 3: Verify the Key
 Run this quick terminal command to verify your key is active:
 ```powershell
-python -c "from backend.database import db; from backend.services.gemini_service import GeminiService; s = db.get_session(); res = GeminiService.answer_graph_query(s, 'Who are the primary targets?'); print('Model:', res.ai_model); print('Answer preview:', res.answer[:80])"
+python -c "from backend.database import db; from backend.services.llm_service import LLMService; s = db.get_session(); res = LLMService.answer_graph_query(s, 'Who are the primary targets?'); print('Model:', res.ai_model); print('Answer preview:', res.answer[:80])"
 ```
-- If it prints `Model: gemini-2.5-flash`, the new key is fully active!
-- If it prints `Model: gemini-2.5-flash (Demonstration Engine)`, the key is either unset or quota-exhausted, and the automatic heuristic engine is safely serving results.
+- If it prints `Model: hosted-llm`, the new key is fully active!
+- If it prints `Model: hosted-llm (Demonstration Engine)`, the key is either unset or quota-exhausted, and the automatic heuristic engine is safely serving results.
 
 ---
 
@@ -297,7 +297,7 @@ LOG_LEVEL=INFO
 DEBUG=True
 
 # AI Intelligence
-GEMINI_API_KEY=your_gemini_api_key_here
+LLM_API_KEY=your_llm_api_key_here
 ```
 
 ### 6.4 Starting the System
@@ -336,7 +336,7 @@ python -m pytest tests/unit tests/integration -q
 | Screen | Key Features |
 |---|---|
 | **Command Center** | Live ecosystem metrics, entity breakdown histograms, active FIR investigations, and system health status. |
-| **Graph Explorer** | Interactive vis.js canvas with ForceAtlas2 physics, auto-stabilization freeze (prevents jitter and CPU heating), layout selector (Organic, Hierarchical, Radial, Pipeline), and docked **Gemini AI Copilot** with quick prompt chips. |
+| **Graph Explorer** | Interactive vis.js canvas with ForceAtlas2 physics, live physics oscillation, layout selector (Organic, Hierarchical, Radial, Pipeline), and docked **AI Copilot** with quick prompt chips. |
 | **Entity Search** | 360° entity lookup by name, phone, account number, or VIN. Displays 1-hop neighborhood and properties. |
 | **Shortest Path** | Computes shortest evidentiary bridge between any two entities (suspect -> victim) with candidate disambiguation. |
 | **Centrality Rankings**| Ranks key operators by Degree, Weighted Degree, or Cross-case Relevance. Cleanly displays "Data not found" if GDS is absent. |

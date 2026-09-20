@@ -12,7 +12,7 @@ tests/
 ├── fixtures/                # Mock case payloads & streaming event envelopes
 │
 ├── unit/                    # 🔬 Isolated Unit Tests (Fast & Offline)
-│   ├── test_ai_insights.py               # Gemini AI Copilot & heuristic fallback
+│   ├── test_ai_insights.py               # AI Copilot & heuristic fallback
 │   ├── test_batched_relationship_writers.py # Batched Cypher query generators
 │   ├── test_blockchain_ledger.py         # Merkle root & SHA-256 chain verification
 │   ├── test_case_delete.py               # Cascading case deletion & graph pruning

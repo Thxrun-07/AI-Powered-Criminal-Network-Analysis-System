@@ -1,6 +1,6 @@
 # 🎨 Frontend Web Application (Analyst Workspace)
 
-The `frontend/` directory contains the modern, responsive Single Page Application (SPA) designed for forensic investigators, intelligence analysts, and law enforcement officers. Built with **React 19**, **TypeScript (strict mode)**, **Tailwind CSS 3.4**, and **Vite 5**, it provides intuitive real-time graph visualization, suspicious pattern exploration, chain-of-custody verification, and an interactive **Gemini AI Copilot**.
+The `frontend/` directory contains the modern, responsive Single Page Application (SPA) designed for forensic investigators, intelligence analysts, and law enforcement officers. Built with **React 19**, **TypeScript (strict mode)**, **Tailwind CSS 3.4**, and **Vite 5**, it provides intuitive real-time graph visualization, suspicious pattern exploration, chain-of-custody verification, and an interactive **AI Copilot (Hosted LLM)**.
 
 ---
 
@@ -50,8 +50,8 @@ frontend/
 ## 🌟 Key Capabilities & Components
 
 ### 1. Interactive ForceAtlas2 Graph Explorer (`GraphExplorerModule.tsx`)
-- **Physics-Driven Topology with Post-Stabilization Freeze**: Powered by [Vis.js Network](https://visjs.github.io/vis-network/docs/network/) using `forceAtlas2Based` physics solver.
-- **CPU Overheating & Jitter Prevention**: Physics automatically disables upon graph stabilization (`setOptions({ physics: { enabled: false } })`), preventing CPU thrashing and canvas jitter.
+- **Physics-Driven Topology with Live Oscillation**: Powered by [Vis.js Network](https://visjs.github.io/vis-network/docs/network/) using `forceAtlas2Based` physics solver.
+- **Live Physics with Gentle Oscillation**: After initial stabilization, physics transitions to gentle forces for continuous to-and-fro node movement, giving the graph a living, breathing feel. Investigators can toggle physics on/off via the toolbar.
 - **Dedicated Subgraph Extraction Modes**:
   - 🌐 **Full Ecosystem**: Complete multi-domain intelligence view.
   - 📞 **CDR Telecom Graph**: Exclusively isolates telephone nodes, caller-callee links, durations, and connected cell towers (`#06b6d4` triangle nodes).
@@ -71,7 +71,7 @@ frontend/
   - Multiple bank transfers are aggregated into single `TRANSFERRED_TO (nx)` edges displaying total accumulated sums (`₹X,XXX`) and transaction IDs.
 - **Node Specification Table (`EntityPropertiesTable.tsx`)**: Inspects any entity with clear, human-readable labels for IMEIs, carriers, IFSC codes, VINs, crime categories, and communications/financial statistics.
 
-### 2. Docked Gemini AI Copilot & Autonomous Subgraph Extraction
+### 2. Docked AI Copilot (Hosted LLM) & Autonomous Subgraph Extraction
 - **Conversational Intelligence**: Docked side drawer enabling investigators to query graph relationships in natural language.
 - **Autonomous Subgraph Extraction**: Copilot understands intent prompts (e.g., *"extract only CDR graph"*, *"show person network"*, *"extract financial flow"*) and automatically toggles the canvas into the corresponding focused subgraph view.
 - **Rich Markdown Formatting (`FormattedAiMessage.tsx`)**: Renders inline bold emphasis, code spans, bullet lists, and action items cleanly without unparsed raw asterisks.
@@ -82,7 +82,7 @@ frontend/
   - 🌐 *Reset full graph*
   - 🎯 *Who are the main targets?*
   - 💸 *Money laundering flow*
-- **Offline & Rate-Limit Resilience**: If Gemini credits expire or network drops, the backend smoothly switches to an internal heuristic graph analysis engine with zero UI errors.
+- **Offline & Rate-Limit Resilience**: If LLM API credits expire or network drops, the backend smoothly switches to an internal heuristic graph analysis engine with zero UI errors.
 
 ### 3. Automated Pattern & Centrality Panels (`PatternInsightsModule.tsx`, `RankingsModule.tsx`)
 - **Forensic Analytics KPI Banner**: Real-time summary cards for Total AI Detections, Critical Threats, High Threats, and Cross-Case Links.
@@ -137,6 +137,6 @@ The FastAPI backend automatically serves `frontend/dist/` at root `http://localh
 | **Language** | TypeScript | 5.6 | Strict type safety, interfaces, zero `any` leaks |
 | **Styling** | Tailwind CSS | 3.4 | Utility classes + custom Atlas neomorphic tokens |
 | **Bundler** | Vite | 5.x | Lightning-fast HMR and optimized Rollup builds |
-| **Graph Visualization**| Vis.js Network | 9.1 | ForceAtlas2 canvas with post-stabilization freeze |
+| **Graph Visualization**| Vis.js Network | 9.1 | ForceAtlas2 canvas with live physics oscillation |
 | **Charts** | Chart.js | 4.4 | Centrality and entity distribution histograms |
 
