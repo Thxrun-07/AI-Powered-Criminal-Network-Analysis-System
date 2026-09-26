@@ -86,6 +86,7 @@ CASE_MERGE = """
             c.status = $status,
             c.jurisdiction = $jurisdiction,
             c.lead_investigator = $lead_investigator,
+            c.uploaded_by = $uploaded_by,
             c.created_date = $created_date,
             c.summary = $summary,
             c.tags = $tags,
@@ -98,6 +99,7 @@ CASE_MERGE = """
             c.status = coalesce($status, c.status),
             c.jurisdiction = coalesce($jurisdiction, c.jurisdiction),
             c.lead_investigator = coalesce($lead_investigator, c.lead_investigator),
+            c.uploaded_by = coalesce($uploaded_by, c.uploaded_by),
             c.summary = coalesce($summary, c.summary),
             c.updated_at = $now
         RETURN (c.created_at = $now) as was_created
@@ -125,10 +127,12 @@ def case_params(case_meta: CaseMetadata) -> Dict[str, Any]:
         "status": case_meta.status,
         "jurisdiction": case_meta.jurisdiction,
         "lead_investigator": case_meta.lead_investigator,
+        "uploaded_by": getattr(case_meta, "uploaded_by", None) or case_meta.lead_investigator,
         "created_date": case_meta.created_date,
         "summary": case_meta.summary,
         "tags": case_meta.tags
     }
+
 
 
 # ---------------------------------------------------------------------------

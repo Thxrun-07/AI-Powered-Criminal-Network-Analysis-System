@@ -47,11 +47,19 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
               labels: Object.keys(counts),
               datasets: [{
                 data: Object.values(counts),
-                backgroundColor: ['#00d2ff', '#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#a855f7'],
+                backgroundColor: ['#333333', '#706c61', '#8c887e', '#a8a59d', '#555555', '#444444'],
                 borderRadius: 6, barPercentage: 0.6
               }]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { ticks: { color: '#706c61', font: { family: 'Inter', size: 11, weight: 'bold' } }, grid: { display: false } },
+                y: { ticks: { color: '#706c61', font: { family: 'Inter', size: 11 } }, grid: { color: 'rgba(112, 108, 97, 0.12)' } }
+              }
+            }
           });
         }
       } catch (e) {}
@@ -80,10 +88,19 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
           labels: Object.keys(sev),
           datasets: [{
             data: Object.values(sev),
-            backgroundColor: ['#f43f5e', '#f59e0b', '#06b6d4', '#10b981']
+            backgroundColor: ['#dc2626', '#f59e0b', '#0284c7', '#10b981']
           }]
         },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'right',
+              labels: { color: '#334155', font: { family: 'Inter', size: 12, weight: 'bold' } }
+            }
+          }
+        }
       });
     }
     return () => {
@@ -145,7 +162,7 @@ export function OverviewModule({ cases, health, insights, setInsights, changeVie
         {!cases.length ? (
           <div className="empty">
             <svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>
-            No cases registered yet. <a href="#" onClick={(e: React.MouseEvent<HTMLAnchorElement>) => { e.preventDefault(); changeView('ingest'); }}>Ingest case data to get started →</a>
+            No cases registered yet. <a href="#" onClick={(e: React.MouseEvent<HTMLAnchorElement>) => { e.preventDefault(); changeView('cases'); }}>Register case data to get started →</a>
           </div>
         ) : (
           <div className="tbl-wrap">

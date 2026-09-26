@@ -3,6 +3,8 @@ export interface Case {
   case_id: string;
   case_name?: string;
   status?: string;
+  uploaded_by?: string;
+  lead_investigator?: string;
   total_entities?: number;
   severity?: string;
   fir_number?: string;
@@ -14,6 +16,7 @@ export interface Case {
   overlapping_cases?: string[];
   [key: string]: unknown;
 }
+
 
 export interface Entity {
   id?: string;
@@ -74,9 +77,17 @@ export interface Toast {
   out: boolean;
 }
 
-export type ViewId = 'overview' | 'graph' | 'search' | 'path' | 'rankings' | 'insights' | 'blockchain' | 'cases' | 'ingest';
+export type ViewId = 'home' | 'overview' | 'graph' | 'search' | 'path' | 'rankings' | 'insights' | 'blockchain' | 'cases' | 'ingest';
 
 export type ThemeMode = 'dark' | 'light';
+
+export interface OfficerSession {
+  badgeNumber: string;
+  officerName: string;
+  department: string;
+  clearanceLevel: string; // e.g. 'Level 1: Officer' | 'Level 2: Investigator' | 'Level 3: Lead Detective' | 'Level 4: Special Director'
+  signedInAt: string;
+}
 
 export interface ModalState {
   type: string;
@@ -251,6 +262,7 @@ export function getDeterministicSeed(str?: string | null): number {
 
 // ---------- Navigation Config ----------
 export const NAV: NavOption[] = [
+  { id: 'home', label: 'Home / Portal', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
   { id: 'overview', label: 'Command Center', icon: 'M4 13 9 4l5 9H4Zm6 0 5-8 5 8h-10Z' },
   { id: 'graph', label: 'Graph Explorer', icon: 'M12 3a2 2 0 0 1 2 2c0 .4-.1.8-.3 1.1l3.4 5.4c.3-.1.6-.2.9-.2a2 2 0 1 1 0 4c-.3 0-.6-.1-.9-.2l-3.4 5.4c.2.3.3.7.3 1.1a2 2 0 1 1-3.6-1.1L8.9 15.5c-.3.1-.6.2-.9.2a2 2 0 1 1 0-4c.3 0 .6.1.8.2l3.4-5.4c-.2-.3-.3-.7-.3-1.1a2 2 0 0 1 2-2Z' },
   { id: 'search', label: 'Entity Search', icon: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm10 2-4.35-4.35' },
@@ -263,6 +275,7 @@ export const NAV: NavOption[] = [
 ];
 
 export const TITLES: Record<string, [string, string]> = {
+  home: ['ATLAS', 'Criminal Network Analysis System'],
   overview: ['Command Center', 'Ecosystem health metrics, top entities and active investigations'],
   graph: ['Graph Explorer', 'Interactive topological network visualization'],
   search: ['Entity Search', 'Fast multi-property search across people, phones, bank accounts, VINs'],
@@ -273,3 +286,61 @@ export const TITLES: Record<string, [string, string]> = {
   cases: ['Case Registry', 'Manage cases, entity breakdowns, case ingestion, and deletion'],
   ingest: ['Data Ingestion', 'Multi-source document and evidence ingestion engine']
 };
+
+// ---------- Officer Scope Case Helpers ----------
+export function getOfficerUploadedCaseIds(badgeNumber: string): string[] {
+  try {
+    const raw = localStorage.getItem(`atlas_officer_cases_${badgeNumber}`);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function addOfficerUploadedCaseId(badgeNumber: string, caseId: string): void {
+  try {
+    const existing = getOfficerUploadedCaseIds(badgeNumber);
+    if (!existing.includes(caseId)) {
+      existing.push(caseId);
+      localStorage.setItem(`atlas_officer_cases_${badgeNumber}`, JSON.stringify(existing));
+    }
+  } catch (e) {
+    console.warn('Failed to store officer case link', e);
+  }
+}
+
+export function removeOfficerUploadedCaseId(badgeNumber: string, caseId: string): void {
+  try {
+    const existing = getOfficerUploadedCaseIds(badgeNumber);
+    const filtered = existing.filter(id => id.toLowerCase() !== caseId.toLowerCase());
+    localStorage.setItem(`atlas_officer_cases_${badgeNumber}`, JSON.stringify(filtered));
+  } catch (e) {
+    console.warn('Failed to remove officer case link', e);
+  }
+}
+
+export function filterCasesForOfficer(cases: Case[], session: OfficerSession | null): Case[] {
+  if (!session) return cases;
+  const officerBadge = (session.badgeNumber || '').trim().toUpperCase();
+  const officerName = (session.officerName || '').trim().toLowerCase();
+  const storedIds = getOfficerUploadedCaseIds(officerBadge).map(id => id.toLowerCase());
+
+  // Demo fallback: if officer is initial default lead detective (e.g. IND-LE-8402 or Rahul) and storedIds is empty, seed initial cases
+  if (storedIds.length === 0 && (officerBadge === 'IND-LE-8402' || officerName.includes('rahul'))) {
+    cases.forEach(c => addOfficerUploadedCaseId(officerBadge, c.case_id));
+    return cases;
+  }
+
+  return cases.filter(c => {
+    const cId = (c.case_id || '').toLowerCase();
+    const uploadedBy = String(c.uploaded_by || '').trim();
+    const leadInv = String(c.lead_investigator || '').trim();
+
+    if (storedIds.includes(cId)) return true;
+    if (uploadedBy && (uploadedBy.toUpperCase() === officerBadge || uploadedBy.toLowerCase() === officerName)) return true;
+    if (leadInv && (leadInv.toUpperCase() === officerBadge || leadInv.toLowerCase() === officerName)) return true;
+    return false;
+  });
+}
+

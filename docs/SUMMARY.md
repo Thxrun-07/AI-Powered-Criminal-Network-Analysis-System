@@ -5,34 +5,40 @@
 The **Crime & Case Graph Intelligence Platform** serves as an enterprise-grade **Database & Graph Intelligence Layer** designed for law enforcement agencies, cybercrime cells, and forensic investigative units. It ingests both structured digital evidence (telecom CDRs, bank transaction logs, cell tower dumps) and unstructured forensic narratives (FIR reports, surveillance notes, intelligence briefings), transforming them into a highly interconnected, queryable **Neo4j knowledge graph** exposed via a high-performance **FastAPI REST API**.
 
 ### Primary Operational Capabilities:
-1. **Multi-Modal Evidence Ingestion**:
+1. **Officer Authentication & Dynamic RBAC (`/api/auth/*`)**:
+   - Secure officer portal with badge ID, username, and department registration.
+   - Salted SHA-256 password security, dynamic session persistence in `data/users.json`, and automatic officer attribution stamped on every ingested case and evidence artifact.
+2. **Multi-Modal Evidence Ingestion**:
    - **Bulk Ingestion (`POST /api/cases/ingest`)**: Idempotent Cypher `MERGE`-based ingestion accepting nested case JSON envelopes (`CaseEnvelope`, `CaseData`).
    - **Unified Forensic Parser (`POST /api/v1/ingest`, `POST /api/v1/ingest/text`)**: Ingests folders of mixed files (unstructured FIR text, CDR CSVs, bank CSVs) or raw text payloads directly into graph entities.
-2. **Incremental Real-Time Event Processing (`POST /api/events/batch`)**:
+3. **Evidence Document Studio & In-App CSV Viewer**:
+   - Client-side and server-side evidence registry with real-time file preview for text, JSON, and parsed CSV tables.
+   - Investigator filtering, badge search, and full evidence chain-of-custody tracking.
+4. **Incremental Real-Time Event Processing (`POST /api/events/batch`)**:
    - High-throughput batch API processing up to 5,000 events atomically in a single Neo4j transaction across 15 canonical event types (`PERSON_UPSERT`, `COMMUNICATION`, `TRANSACTION`, `SURVEILLANCE_LOG`, etc.).
    - Tracks touched graph entities to dynamically trigger only the relevant forensic insight detectors.
-3. **10 Automated Forensic Pattern Detectors**:
+5. **10 Automated Forensic Pattern Detectors**:
    - Runs deterministic graph pattern algorithms detecting money laundering chains, burner phone networks, fund pooling (high fan-in), fund dispersal (high fan-out), shared criminal infrastructure, cross-case syndicate links, and physical co-location events.
-4. **Cryptographic Blockchain Evidence Chain of Custody (`/api/v1/blockchain/*`)**:
+6. **Cryptographic Blockchain Evidence Chain of Custody (`/api/v1/blockchain/*`)**:
    - Every ingested case and forensic document (FIR, CDR, Bank Statement, Surveillance Log) is cryptographically hashed (SHA-256) and committed as a verifiable block in an immutable ledger with Merkle root verification.
    - Built-in tamper-detection audits live Neo4j graph state against on-chain Merkle roots.
-5. **AI Forensic Intelligence Dossier (`GET/POST /api/cases/{case_id}/ai-insights`)**:
+7. **AI Forensic Intelligence Dossier (`GET/POST /api/cases/{case_id}/ai-insights`)**:
    - Gathers multi-hop subgraph context and synthesizes an executive intelligence assessment using **Hosted LLM** (with automatic heuristic fallback when offline).
    - Generates executive summaries, modus operandi analysis, key target suspects, critical anomalies, and actionable next steps under law enforcement procedures (e.g., Section 91 CrPC notices, tower dump warrants).
-6. **Ambiguity-Safe Shortest-Path Discovery (`GET /api/cases/shortest-path`)**:
+8. **Ambiguity-Safe Shortest-Path Discovery (`GET /api/cases/shortest-path`)**:
    - Discovers multi-hop relational chains connecting suspects to victims across communications, financial transactions, co-locations, and asset ownership.
    - Provides safe candidate disambiguation when multiple individuals share identical names or aliases without guessing.
-7. **Graph Centrality & Kingpin Rankings (`GET /api/cases/rankings`)**:
+9. **Graph Centrality & Kingpin Rankings (`GET /api/cases/rankings`)**:
    - Evaluates network influence and identifies syndicate orchestrators using Degree, Weighted Degree, Cross-Case Relevance, and Neo4j Graph Data Science (GDS) PageRank & Betweenness Centrality.
-8. **Interactive 360° Visualizer Dashboard (`GET /`)**:
-   - Single-page interface ("Atlas") providing dynamic graph visualization, entity search, timeline filtering, blockchain verification view, and AI dossier reporting.
+10. **Interactive 4-Hub Visualizer Dashboard (`GET /`)**:
+   - Comprehensive multi-module interface ("Atlas") organized into 4 workflow hubs: Command Center (Home/Overview), Network Studio (Graph Canvas with continuous live physics oscillation), Intelligence Hub (AI Copilot, Patterns, Shortest Path, Centrality), and Evidence & Cases (Registry, Ingestion, Blockchain Ledger).
 
 ---
 
 ## 2. Professional Directory Structure
 
 ```
-SIH-189-completed/
+SIH_189_V2/
 ├── .env                                # Active environment configuration (Neo4j URI, credentials, ports)
 ├── .env.example                        # Template environment variables with documentation
 ├── .gitignore                          # Protected version control exclusions (.env, virtualenvs, cache)
@@ -43,13 +49,13 @@ SIH-189-completed/
 ├── start_system.bat                    # 1-Click launcher for both Backend (8000) & Frontend (3000)
 ├── run_backend.bat                     # 1-Click launcher for FastAPI backend
 ├── run_frontend.bat                    # 1-Click launcher for Vite React frontend
-├── README.md                           # Quickstart showcase, architecture diagrams, and API examples
+├── README.md                           # Quickstart showcase, architecture diagrams, and evolution guide
 ├── SUMMARY.md                          # Comprehensive technical system specification (this document)
 │
 ├── frontend/                           # React 19 + TypeScript + Tailwind CSS Frontend
 │   ├── src/                            # Modern SPA component architecture
-│   │   ├── components/                 # Sidebar, Overview, GraphExplorer, EntityPropertiesTable, FormattedAiMessage, etc.
-│   │   ├── services/api.ts             # Strongly typed REST client, color maps & interfaces
+│   │   ├── components/                 # AuthModule, HomeModule, Sidebar, Overview, GraphExplorer, CaseRegistry, etc.
+│   │   ├── services/                   # api.ts (REST client & types), fileStore.ts (in-browser evidence store)
 │   │   ├── App.tsx                     # Top-level state coordinator & routing
 │   │   └── main.tsx                    # React 19 bootstrap
 │   ├── dist/                           # Compiled production build served by FastAPI
@@ -76,6 +82,7 @@ SIH-189-completed/
 │   │
 │   ├── services/                       # Domain Business Logic & Graph Algorithms
 │   │   ├── __init__.py                 # Service exports
+│   │   ├── auth_service.py             # PBKDF2/SHA-256 password hashing & officer session state
 │   │   ├── blockchain_service.py       # Cryptographic evidence ledger, Merkle roots, and chain verification
 │   │   ├── delta_processor.py          # Atomic incremental event batch processor with rollback safety
 │   │   ├── evidence_relationship_engine.py # Evidence-backed typed relationship derivation
@@ -83,7 +90,7 @@ SIH-189-completed/
 │   │   ├── llm_service.py              # Forensic AI intelligence brief synthesis via Hosted LLM
 │   │   ├── graph_service.py            # Subgraph extraction (CDR/Person/Financial), call/tx aggregation, dossiers
 │   │   ├── graph_writes.py             # Single source of truth for all Neo4j Cypher MERGE/UNWIND statements
-│   │   ├── ingestion_engine.py         # Multi-format heuristic & LLM parser for CDR/Bank CSVs, FIR PDFs & text
+│   │   ├── ingestion_engine.py         # Multi-format parser with clean_person_name regex & 40+ non-person filter
 │   │   ├── ingestion_service.py        # Atomic case ingestion engine with ACID transaction rollback
 │   │   ├── insights_engine.py          # Reference implementations for all 10 forensic insight detectors
 │   │   ├── normalizer.py               # E.164 phone & account identifier normalization
@@ -95,6 +102,7 @@ SIH-189-completed/
 │   │
 │   ├── routers/                        # REST API Route Endpoints
 │   │   ├── __init__.py                 # Router exports
+│   │   ├── auth.py                     # POST /api/auth/signup, POST /api/auth/login, GET /api/auth/users
 │   │   ├── blockchain.py               # GET /api/v1/blockchain/* (Ledger, chain audit, case verification)
 │   │   ├── cases.py                    # POST /api/cases/ingest, GET /api/cases, DELETE /api/cases/{case_id}
 │   │   ├── events.py                   # POST /api/events/batch (Atomic incremental event processing)
@@ -109,7 +117,8 @@ SIH-189-completed/
 │       └── index.html                  # Standalone fallback dashboard
 │
 ├── data/                               # Persistent Storage
-│   └── blockchain_ledger.json          # Cryptographic evidence chain-of-custody ledger
+│   ├── blockchain_ledger.json          # Cryptographic evidence chain-of-custody ledger
+│   └── users.json                      # Registered officer credentials with salted SHA-256 hashes
 │
 ├── docs/                               # Detailed Technical Guides
 │   ├── EVENTS_API.md                   # Incremental Events API specification & integration contract
@@ -121,13 +130,14 @@ SIH-189-completed/
 │   ├── case_002_fraud.json             # Corporate fraud case with cross-case overlapping entities
 │   └── envelope_sample.json            # Standard envelope wrapper example for automated pipelines
 │
-└── tests/                              # Automated Test Suite (226 Tests)
+└── tests/                              # Automated Test Suite (228 Tests Passing)
     ├── conftest.py                     # Mock Neo4j driver, sessions, TestClient, test ledger isolation
     ├── fixtures/                       # Deterministic test payloads
     │   ├── case_edge_batching.json
     │   └── equivalence_scenarios.json
     ├── unit/                           # Isolated Unit Tests (Fast, mocked dependencies)
     │   ├── test_ai_insights.py
+    │   ├── test_auth.py                # Officer signup, login, password salt-hash, and user listing
     │   ├── test_batched_relationship_writers.py
     │   ├── test_blockchain_ledger.py
     │   ├── test_case_delete.py
@@ -241,9 +251,31 @@ The platform incorporates an immutable, tamper-evident audit ledger (`app/servic
 
 ---
 
-## 7. Dual AI Intelligence (Hosted LLM)
+## 7. Officer Authentication & Dynamic RBAC
 
-### 7.1 Case Intelligence Dossier (`GET/POST /api/cases/{case_id}/ai-insights`)
+The platform provides a secured authentication and role-based access control engine (`routers/auth.py`, `services/auth_service.py`):
+- **Officer Signup & Login**:
+  - `POST /api/auth/signup`: Registers officers with badge ID, username, and department.
+  - `POST /api/auth/login`: Authenticates officers using salted SHA-256 password verification and establishes session state.
+  - `GET /api/auth/users`: Lists registered investigative officers and status.
+- **Dynamic Credential Store**: Persists user credentials securely in `data/users.json` using unique per-user cryptographic salts.
+- **Investigator Attribution**: All newly ingested cases, digital evidence files, and real-time events record the authenticated officer's badge/username for immutable audit compliance.
+
+---
+
+## 8. Evidence Document Studio & CSV Table Viewer
+
+Investigators can view and inspect original source evidence files directly within the platform:
+- **In-App Document Viewer**: Provides an interactive side-drawer in the Case Registry for instant preview of uploaded forensic files (FIR text, CDR CSVs, bank statements, CCTV surveillance logs).
+- **Interactive CSV Table Viewer**: Automatically parses comma-delimited data (e.g. call records, financial transfers) into formatted tabular views with header sorting and line numbering.
+- **Browser & Server Persistence**: Hybrid architecture leveraging `services/fileStore.ts` for instant client-side rendering alongside backend case persistence.
+- **Officer-Scoped Evidence Filtering**: Filter evidence and cases by assigned investigator badge ID or name.
+
+---
+
+## 9. Dual AI Intelligence (Hosted LLM)
+
+### 9.1 Case Intelligence Dossier (`GET/POST /api/cases/{case_id}/ai-insights`)
 1. Subgraph context (suspect profiles, phone connections, transaction paths, locations) is queried from Neo4j.
 2. Formatted data is submitted to **Hosted LLM** with structured JSON output instructions.
 3. The response synthesizes an authoritative intelligence assessment:
@@ -255,13 +287,13 @@ The platform incorporates an immutable, tamper-evident audit ledger (`app/servic
    - **Actionable Leads**: Concrete procedural steps (e.g., Section 91 CrPC notices, CDR tower dumps).
 4. **Heuristic Fallback**: If the LLM is offline or unconfigured, an intelligent heuristic engine synthesizes a baseline dossier from graph topology.
 
-### 7.2 Interactive Graph AI Copilot (`POST /api/graph/ai-query`)
+### 9.2 Interactive Graph AI Copilot (`POST /api/graph/ai-query`)
 - Docks directly beside the interactive Vis.js graph canvas in the Analyst Dashboard ("Atlas").
 - Allows investigators with zero graph or Cypher background to converse with the topology in plain English.
 - Accepts targeted questions (*"Who is the kingpin?"*, *"Explain money flow"*, *"Trace burner phones"*) or 1-click entity inspections (*"Analyze connections of Devendra Sharma"*).
 - Gathers active subgraph topology, top suspects by degree, communication endpoints, and fund transfers, formulating direct deductive conclusions and immediate field recommendations.
 
-### 7.3 Managing & Replacing API Keys When Quota / Credits Expire
+### 9.3 Managing & Replacing API Keys When Quota / Credits Expire
 - **Rate Limits**: Hosted LLM providers enforce rate limits (e.g. requests per minute, daily limits). Once exceeded, requests throw HTTP 429 `RESOURCE_EXHAUSTED`.
 - **Replacing the Key**:
   1. Generate a new API key from your hosted LLM provider console.
@@ -271,12 +303,15 @@ The platform incorporates an immutable, tamper-evident audit ledger (`app/servic
 
 ---
 
-## 8. REST API Quick Reference
+## 10. REST API Quick Reference
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/` | Serves interactive single-page Analyst Dashboard ("Atlas") |
 | `GET` | `/api/health` | System health probe, Neo4j connectivity, and GDS availability |
+| `POST` | `/api/auth/signup` | Register officer with badge, username, and department |
+| `POST` | `/api/auth/login` | Officer login with salted SHA-256 verification & session state |
+| `GET` | `/api/auth/users` | List registered investigative officers |
 | `POST` | `/api/cases/ingest` | Idempotent bulk case ingestion (`mode=merge` or `mode=replace`) |
 | `GET` | `/api/cases` | List all ingested cases with pagination and status filter |
 | `GET` | `/api/cases/{case_id}` | Case summary with entity breakdown and metadata |
@@ -300,9 +335,9 @@ The platform incorporates an immutable, tamper-evident audit ledger (`app/servic
 
 ---
 
-## 9. Automated Testing Architecture
+## 11. Automated Testing Architecture
 
-The platform features a 235-test automated verification suite organized into clear tiers:
+The platform features a 228-test automated verification suite organized into clear tiers:
 
 ```bash
 # Run complete test suite (unit + integration + live skips)

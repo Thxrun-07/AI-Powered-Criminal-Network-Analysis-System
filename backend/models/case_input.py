@@ -19,10 +19,12 @@ class CaseMetadata(BaseModel):
     status: Optional[str] = Field(default="OPEN", description="OPEN, UNDER_INVESTIGATION, CHARGED, CLOSED")
     jurisdiction: Optional[str] = Field(default=None, description="Department or state jurisdiction")
     lead_investigator: Optional[str] = Field(default=None, description="Name or badge of lead investigator")
+    uploaded_by: Optional[str] = Field(default=None, description="Officer badge number or name who uploaded the case")
     created_date: Optional[str] = Field(default=None, description="Case creation date (YYYY-MM-DD)")
     summary: Optional[str] = Field(default=None, description="High-level narrative summary of the case")
     tags: List[str] = Field(default_factory=list, description="Investigative tags")
     properties: Dict[str, Any] = Field(default_factory=dict)
+
 
 
 class EntitiesContainer(BaseModel):

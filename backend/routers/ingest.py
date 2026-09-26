@@ -172,6 +172,8 @@ async def ingest_files(
     files: Optional[List[UploadFile]] = File(None),
     file: Optional[UploadFile] = File(None),
     case_id: Optional[str] = Query(None),
+    uploaded_by: Optional[str] = Query(None),
+    officer_name: Optional[str] = Query(None),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     api_key: Optional[str] = Query(None)
 ):
@@ -189,6 +191,10 @@ async def ingest_files(
     if case_id:
         engine.case_metadata.case_id = case_id
         engine.case_metadata.case_name = f"Case {case_id}"
+    if uploaded_by:
+        engine.case_metadata.uploaded_by = uploaded_by
+    if officer_name:
+        engine.case_metadata.lead_investigator = officer_name
 
     documents: List[CaseDocument] = []
     legacy_files = 0
@@ -198,6 +204,7 @@ async def ingest_files(
         filename = upload_file.filename or "uploaded_file.txt"
         contents = await upload_file.read()
         file_hash = hashlib.sha256(contents).hexdigest()
+
         if file_hash in seen_hashes:
             logger.info(f"Skipping duplicate file payload '{filename}' (SHA256: {file_hash[:8]}).")
             continue
@@ -212,6 +219,10 @@ async def ingest_files(
             case_doc, ds_id, ds_ver = document
             if case_id:
                 case_doc.case_metadata.case_id = case_id
+            if uploaded_by:
+                case_doc.case_metadata.uploaded_by = uploaded_by
+            if officer_name:
+                case_doc.case_metadata.lead_investigator = officer_name
             logger.info(
                 f"'{filename}' is a CaseData JSON document (case '{case_doc.case_metadata.case_id}'); "
                 f"bypassing legacy CaseIngestionEngine."
@@ -227,6 +238,10 @@ async def ingest_files(
         graph_case_data = map_ingestion_to_graph_data(consolidated_case.model_dump())
         if case_id:
             graph_case_data.case_metadata.case_id = case_id
+        if uploaded_by:
+            graph_case_data.case_metadata.uploaded_by = uploaded_by
+        if officer_name:
+            graph_case_data.case_metadata.lead_investigator = officer_name
         documents.append((graph_case_data, "DS-DEFAULT", "1.0"))
 
     if not documents:

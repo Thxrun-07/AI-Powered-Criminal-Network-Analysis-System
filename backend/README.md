@@ -24,6 +24,7 @@ backend/
 │   └── relationship.py    # Directional relationship schemas
 │
 ├── routers/               # 🌐 REST API Endpoints
+│   ├── auth.py            # Officer signup, login, session validation & user listing
 │   ├── blockchain.py      # Chain-of-custody blocks & cryptographic verification
 │   ├── cases.py           # Multi-file case ingestion & deletion
 │   ├── events.py          # Real-time event streaming (`POST /api/events`)
@@ -35,22 +36,23 @@ backend/
 │   └── rankings.py        # PageRank, betweenness, and degree centrality
 │
 └── services/              # 🧠 Domain Intelligence & Business Logic
-│   ├── blockchain_service.py  # SHA-256 Merkle root computation & tamper detection
-│   ├── delta_processor.py     # Real-time event application with idempotency
-│   ├── evidence_relationship_engine.py # Evidence-backed typed relationship derivation
-│   ├── evidence_store.py      # Granular CDR and transaction storage & retrieval
-│   ├── llm_service.py         # Hosted LLM with offline heuristic fallback
-│   ├── graph_service.py       # Graph retrieval, subgraph extraction & call/tx aggregation
-│   ├── graph_writes.py        # Batched atomic Cypher writes with business keys
-│   ├── ingestion_engine.py    # Forensic case entity & relation extraction
-│   ├── ingestion_service.py   # Transactional case persistence coordinator
-│   ├── insights_engine.py     # Pattern detection orchestrator
-│   ├── normalizer.py          # E.164 phone & account identifier normalization
-│   ├── path_service.py        # Breadth-first shortest path with fuzzy resolution
-│   ├── ranking_service.py     # Graph centrality algorithms
-│   ├── schema_manager.py      # Neo4j uniqueness constraints & schema indexing
-│   ├── schema_mapper.py       # Payload normalization mapper
-│   └── scoped_detectors.py    # Case-scoped Cypher queries for all 10 detectors
+    ├── auth_service.py        # PBKDF2/SHA-256 password hashing & officer session state
+    ├── blockchain_service.py  # SHA-256 Merkle root computation & tamper detection
+    ├── delta_processor.py     # Real-time event application with idempotency
+    ├── evidence_relationship_engine.py # Evidence-backed typed relationship derivation
+    ├── evidence_store.py      # Granular CDR and transaction storage & retrieval
+    ├── llm_service.py         # Hosted LLM with offline heuristic fallback
+    ├── graph_service.py       # Graph retrieval, subgraph extraction & call/tx aggregation
+    ├── graph_writes.py        # Batched atomic Cypher writes with business keys
+    ├── ingestion_engine.py    # Forensic case entity & relation extraction
+    ├── ingestion_service.py   # Transactional case persistence coordinator
+    ├── insights_engine.py     # Pattern detection orchestrator
+    ├── normalizer.py          # E.164 phone & account identifier normalization
+    ├── path_service.py        # Breadth-first shortest path with fuzzy resolution
+    ├── ranking_service.py     # Graph centrality algorithms
+    ├── schema_manager.py      # Neo4j uniqueness constraints & schema indexing
+    ├── schema_mapper.py       # Payload normalization mapper
+    └── scoped_detectors.py    # Case-scoped Cypher queries for all 10 detectors
 ```
 
 ---
@@ -95,7 +97,9 @@ backend/
 - **Atomic ACID Transactions**: All graph entity and relation writes are wrapped within `with session.begin_transaction() as tx:` to guarantee atomic rollback on failure.
 - **ID-First Identity Resolution (`people_by_id`)**: Primary key identifiers ensure suspects sharing the same name remain distinct nodes.
 - **Zero Hallucination Policy**: Purged hardcoded placeholder entities (e.g. "Amit Sharma"); strict prompting ensures no fictitious identities are introduced.
-- **Non-Person Words Filter**: `NON_PERSON_WORDS` filter prevents transaction/event descriptions (like "accounts emptied") from creating ghost Person nodes.
+- **Enhanced Sanitization (`clean_person_name`)**: Integrated regex cleaner that strips leading numbers, timestamps, honorifics (Mr., Mrs., Inspector), punctuation, and brackets from names.
+- **Expanded Non-Person Words Filter**: Broadened 40+ token vocabulary (`NON_PERSON_WORDS`) and narrative keyword checks preventing banking/forensic narrative words (e.g., "accounts emptied", "withdrawals", "cyber cell", "seized cash") from generating ghost `Person` nodes.
+- **Officer Attribution**: Every ingested case and associated digital evidence artifact captures and persists the uploading officer's badge/username (`officer` field).
 - **PDF Extraction**: Integrated `pdfplumber` and `pypdf` in `routers/ingest.py` to extract text from FIR PDFs and intelligence memos with HTTP 422 handling for scanned/corrupt files.
 - **New Graph Relationships**: Added `USES_IP` (`(:Person|SocialHandle)-[:USES_IP]->(:IPAddress)`) and `SURVEILLANCE_PHONE_LOCATED_AT`.
 - **Payload Deduplication**: Multi-file ingestion calculates SHA-256 hashes to prevent redundant processing of identical files.
@@ -103,6 +107,14 @@ backend/
 ### 6. Real-Time Event Streaming Engine (`services/delta_processor.py`)
 - Ingests streaming operational events (arrests, seizures, CDR call records, CCTV sightings) via `POST /api/events`.
 - Guarantees idempotent MERGE operations with deterministic business keys without rewriting the graph.
+
+### 7. Officer Authentication & Dynamic RBAC (`routers/auth.py`, `services/auth_service.py`)
+- **Endpoints**:
+  - `POST /api/auth/signup`: Registers new investigative officers with badge IDs, usernames, and department credentials.
+  - `POST /api/auth/login`: Authenticates officers using salted SHA-256 password verification and establishes session state.
+  - `GET /api/auth/users`: Lists registered investigative officers and credentials.
+- **Secure Persistence**: Maintains officer identities in `data/users.json` with dynamic salt and SHA-256 password hashing.
+- **Investigator Attribution**: All newly ingested cases, digital evidence files, and real-time events record the authenticated officer's badge/username for immutable audit compliance.
 
 ---
 

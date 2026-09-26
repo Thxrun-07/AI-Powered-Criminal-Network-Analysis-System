@@ -7,6 +7,7 @@ from backend.routers.graph import router as graph_router
 from backend.routers.ingest import router as ingest_router
 from backend.routers.events import router as events_router
 from backend.routers.blockchain import router as blockchain_router
+from backend.routers.auth import router as auth_router
 
 __all__ = [
     "health_router",
@@ -17,6 +18,8 @@ __all__ = [
     "graph_router",
     "ingest_router",
     "events_router",
-    "blockchain_router"
+    "blockchain_router",
+    "auth_router"
 ]
+
 

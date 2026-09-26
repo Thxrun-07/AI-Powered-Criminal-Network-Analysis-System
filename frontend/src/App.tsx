@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   API,
   NAV,
+  TITLES,
   Case,
   Entity,
   Insight,
@@ -9,9 +10,13 @@ import {
   ViewId,
   ThemeMode,
   Toast,
-  ModalState
+  ModalState,
+  OfficerSession,
+  filterCasesForOfficer
 } from './services/api';
-import { Sidebar, Topbar } from './components/Sidebar';
+import { Sidebar, TopHeader } from './components/Sidebar';
+import { HomeModule } from './components/HomeModule';
+import { AuthModule } from './components/AuthModule';
 import { OverviewModule } from './components/OverviewModule';
 import { GraphExplorerModule } from './components/GraphExplorerModule';
 import { EntitySearchModule } from './components/EntitySearchModule';
@@ -27,24 +32,51 @@ import {
   ResetDbConfirmContent,
   DeleteCaseConfirmContent
 } from './components/Modals';
+import { LocalCaseStore } from './services/fileStore';
+
 
 export default function App() {
+  // Default to clean Light Theme as requested
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('atlas_theme') as ThemeMode | null;
     if (saved === 'dark' || saved === 'light') return saved;
-    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    return 'light';
   });
+
+  // Default to dedicated Home page
   const [view, setView] = useState<string>(() => {
     const h = location.hash.replace('#', '');
-    return NAV.find(n => n.id === h) ? h : 'overview';
+    return NAV.find(n => n.id === h) || h === 'auth' ? h : 'home';
   });
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [cases, setCases] = useState<Case[]>([]);
   const [selectedCase, setSelectedCase] = useState<string | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modal, setModal] = useState<ModalState | null>(null);
+
+  // Dynamic Investigator Session (No hardcoded default officer)
+  const [officerSession, setOfficerSession] = useState<OfficerSession | null>(() => {
+    try {
+      const saved = localStorage.getItem('atlas_officer_session');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+
+  useEffect(() => {
+    if (officerSession) {
+      localStorage.setItem('atlas_officer_session', JSON.stringify(officerSession));
+    } else {
+      localStorage.removeItem('atlas_officer_session');
+    }
+  }, [officerSession]);
 
   // Apply theme to html root
   useEffect(() => {
@@ -69,7 +101,6 @@ export default function App() {
       if (prev === newView) return prev;
       return newView;
     });
-    setSidebarOpen(false);
     if (window.location.hash !== `#${newView}`) {
       window.history.replaceState(null, '', `#${newView}`);
     }
@@ -98,17 +129,42 @@ export default function App() {
   }, []);
 
   // Load cases
+  // Load cases (merges API cases with local persistent uploaded cases)
   const fetchCases = useCallback(async (): Promise<Case[]> => {
+    let apiCases: Case[] = [];
     try {
-      const list = await API.get<Case[]>('/api/cases?limit=200');
-      setCases(list);
-      return list;
-    } catch (e: unknown) {
-      const err = e as Error;
-      addToast(`Failed to load cases: ${err.message}`, 'err');
-      return [];
+      apiCases = await API.get<Case[]>('/api/cases?limit=200');
+    } catch {
+      apiCases = [];
     }
-  }, [addToast]);
+
+    const localCases = LocalCaseStore.getAll();
+    const mergedMap = new Map<string, Case>();
+
+    // 1. Add API cases
+    apiCases.forEach(c => {
+      if (c && c.case_id) {
+        mergedMap.set(c.case_id.toLowerCase(), c);
+      }
+    });
+
+    // 2. Add / merge local uploaded cases
+    localCases.forEach(c => {
+      if (c && c.case_id) {
+        const key = c.case_id.toLowerCase();
+        if (mergedMap.has(key)) {
+          mergedMap.set(key, { ...mergedMap.get(key), ...c });
+        } else {
+          mergedMap.set(key, c);
+        }
+      }
+    });
+
+    const list = Array.from(mergedMap.values());
+    setCases(list);
+    return list;
+  }, []);
+
 
   useEffect(() => {
     fetchHealth();
@@ -145,50 +201,146 @@ export default function App() {
     setModal({ type: 'delete_case', data: { caseId, caseName } });
   }, []);
 
+  // Filter cases visible to the active officer session
+  const visibleCases = useMemo(() => {
+    return filterCasesForOfficer(cases, officerSession);
+  }, [cases, officerSession]);
+
   return (
     <React.Fragment>
-      {/* Sidebar Mobile Overlay */}
-      <div className={`overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)}></div>
-
-      <div className="app relative z-[1]">
-        {/* Sidebar */}
-        <Sidebar
-          view={view}
+      {/* Dedicated Dynamic Auth Page */}
+      {view === 'auth' ? (
+        <AuthModule
+          setOfficerSession={setOfficerSession}
           changeView={changeView}
-          theme={theme}
-          toggleTheme={toggleTheme}
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-          promptResetDatabase={promptResetDatabase}
+          addToast={addToast}
         />
-
-        {/* Main Content Area */}
-        <main className="main mx-auto">
-          <Topbar
-            view={view}
+      ) : view === 'home' ? (
+        <HomeModule
+          cases={visibleCases}
+          health={health}
+          insights={insights}
+          officerSession={officerSession}
+          setOfficerSession={setOfficerSession}
+          changeView={changeView}
+          setSelectedCase={setSelectedCase}
+          addToast={addToast}
+        />
+      ) : (
+        <div className="app-shell">
+          {/* Top Bar: Left ATLAS brand, Right corner user profile with dropdown as logout */}
+          <TopHeader
             health={health}
-            theme={theme}
-            toggleTheme={toggleTheme}
-            setSidebarOpen={setSidebarOpen}
+            officerSession={officerSession}
+            setOfficerSession={setOfficerSession}
+            changeView={changeView}
+            addToast={addToast}
           />
 
-          {/* View Component Dispatcher */}
-          <div key={view} className="view-pane">
-            {view === 'overview' && <OverviewModule cases={cases} health={health} insights={insights} setInsights={setInsights} changeView={changeView} openAiDossier={openAiDossierModal} />}
-            {view === 'graph' && <GraphExplorerModule cases={cases} selectedCase={selectedCase} setSelectedCase={setSelectedCase} openEntityModal={openEntityModal} addToast={addToast} theme={theme} />}
-            {view === 'search' && <EntitySearchModule openEntityModal={openEntityModal} addToast={addToast} />}
-            {view === 'path' && <ShortestPathModule openEntityModal={openEntityModal} addToast={addToast} />}
-            {view === 'rankings' && <RankingsModule cases={cases} openEntityModal={openEntityModal} addToast={addToast} />}
-            {view === 'insights' && <PatternInsightsModule cases={cases} insights={insights} setInsights={setInsights} openAiDossier={openAiDossierModal} addToast={addToast} />}
-            {view === 'blockchain' && <BlockchainModule cases={cases} fetchCases={fetchCases} addToast={addToast} />}
-            {view === 'cases' && <CaseRegistryModule cases={cases} fetchCases={fetchCases} selectedCase={selectedCase} setSelectedCase={setSelectedCase} openAiDossier={openAiDossierModal} promptDeleteCase={promptDeleteCase} changeView={changeView} theme={theme} addToast={addToast} />}
-            {view === 'ingest' && <DataIngestionModule fetchCases={fetchCases} changeView={changeView} addToast={addToast} />}
+          <div className="app-layout">
+            {/* Left Vertical Navigation Bar with Expandable Tabs */}
+            <Sidebar
+              view={view}
+              changeView={changeView}
+            />
+
+            {/* Main Right Content Area */}
+            <div className="app-content">
+              <div className="view-banner">
+                <h1>{TITLES[view]?.[0] || 'Command Center'}</h1>
+                <p>{TITLES[view]?.[1] || 'Criminal Network Topology & Link Intelligence'}</p>
+              </div>
+
+              <main className="main">
+              {/* View Component Dispatcher */}
+              <div key={view} className="view-pane">
+                {view === 'overview' && (
+                  <OverviewModule
+                    cases={visibleCases}
+                    health={health}
+                    insights={insights}
+                    setInsights={setInsights}
+                    changeView={changeView}
+                    openAiDossier={openAiDossierModal}
+                  />
+                )}
+                {view === 'graph' && (
+                  <GraphExplorerModule
+                    cases={visibleCases}
+                    selectedCase={selectedCase}
+                    setSelectedCase={setSelectedCase}
+                    openEntityModal={openEntityModal}
+                    addToast={addToast}
+                    theme={theme}
+                  />
+                )}
+                {view === 'search' && (
+                  <EntitySearchModule
+                    openEntityModal={openEntityModal}
+                    addToast={addToast}
+                  />
+                )}
+                {view === 'path' && (
+                  <ShortestPathModule
+                    openEntityModal={openEntityModal}
+                    addToast={addToast}
+                  />
+                )}
+                {view === 'rankings' && (
+                  <RankingsModule
+                    cases={visibleCases}
+                    openEntityModal={openEntityModal}
+                    addToast={addToast}
+                  />
+                )}
+                {view === 'insights' && (
+                  <PatternInsightsModule
+                    cases={visibleCases}
+                    insights={insights}
+                    setInsights={setInsights}
+                    openAiDossier={openAiDossierModal}
+                    addToast={addToast}
+                  />
+                )}
+                {view === 'blockchain' && (
+                  <BlockchainModule
+                    cases={visibleCases}
+                    fetchCases={fetchCases}
+                    addToast={addToast}
+                  />
+                )}
+                {view === 'cases' && (
+                  <CaseRegistryModule
+                    officerSession={officerSession}
+                    cases={visibleCases}
+                    fetchCases={fetchCases}
+                    selectedCase={selectedCase}
+                    setSelectedCase={setSelectedCase}
+                    openAiDossier={openAiDossierModal}
+                    promptDeleteCase={promptDeleteCase}
+                    changeView={changeView}
+                    theme={theme}
+                    addToast={addToast}
+                  />
+                )}
+                {view === 'ingest' && (
+                  <DataIngestionModule
+                    officerSession={officerSession}
+                    fetchCases={fetchCases}
+                    changeView={changeView}
+                    addToast={addToast}
+                  />
+                )}
+              </div>
+            </main>
           </div>
-        </main>
+        </div>
       </div>
+    )}
+
 
       {/* Toast Notifications */}
-      <div id="toasts" className="fixed top-5 right-5 z-[9999] flex flex-col gap-2.5 pointer-events-none">
+      <div id="toasts">
         {toasts.map(t => (
           <div key={t.id} className={`toast ${t.type} ${t.out ? 'out' : ''}`}>{t.msg}</div>
         ))}
@@ -196,9 +348,20 @@ export default function App() {
 
       {/* Global Modal Overlay */}
       {modal && (
-        <div className="modal-overlay open" onClick={(e: React.MouseEvent<HTMLDivElement>) => { if (e.target === e.currentTarget) setModal(null); }}>
+        <div
+          className="modal-overlay open"
+          onClick={(e: React.MouseEvent<HTMLDivElement>) => {
+            if (e.target === e.currentTarget) setModal(null);
+          }}
+        >
           <div className="modal">
-            {modal.type === 'entity' && <EntityModalContent data={modal.data as unknown as Entity} onClose={() => setModal(null)} openEntityModal={openEntityModal} />}
+            {modal.type === 'entity' && (
+              <EntityModalContent
+                data={modal.data as unknown as Entity}
+                onClose={() => setModal(null)}
+                openEntityModal={openEntityModal}
+              />
+            )}
             {modal.type === 'ai_dossier' && (
               <AiDossierModalContent
                 caseId={String(modal.data?.caseId ?? '')}
@@ -213,7 +376,7 @@ export default function App() {
                 onSuccess={() => {
                   fetchCases();
                   setInsights([]);
-                  changeView('overview');
+                  changeView('home');
                 }}
               />
             )}
@@ -223,6 +386,7 @@ export default function App() {
                 caseName={String(modal.data?.caseName ?? '')}
                 onClose={() => setModal(null)}
                 addToast={addToast}
+                officerBadge={officerSession?.badgeNumber}
                 onSuccess={() => {
                   fetchCases();
                   if (selectedCase === modal.data?.caseId) setSelectedCase(null);

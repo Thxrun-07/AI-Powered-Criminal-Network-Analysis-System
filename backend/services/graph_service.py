@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 from neo4j import Session
 from backend.logging_config import logger
-
+from backend.services.ingestion_engine import is_valid_person_name, clean_person_name
 
 class GraphService:
     """
@@ -36,6 +36,10 @@ class GraphService:
             p_rows = session.run(p_cypher, {"case_id": case_id, "limit": limit}).data()
             for row in p_rows:
                 props = row.get("n_props") or {}
+                raw_name = props.get("name")
+                if not is_valid_person_name(raw_name):
+                    continue
+                c_name = clean_person_name(raw_name)
                 labs = row.get("n_labels") or ["Person"]
                 pid = str(props.get("person_id") or f"P_{abs(hash(str(props)))}")
                 role_desc = ""
@@ -48,7 +52,7 @@ class GraphService:
                 nodes_dict[pid] = {
                     "id": pid,
                     "labels": labs,
-                    "name": f"{props.get('name') or pid}{role_desc}",
+                    "name": f"{c_name}{role_desc}",
                     "case_ids": props.get("case_ids") or [],
                     "properties": props
                 }
@@ -387,19 +391,22 @@ class GraphService:
                 or props.get("report_id")
                 or props.get("log_id")
                 or props.get("case_id")
+                or props.get("id")
+                or props.get("name")
                 or (f"{labels[0] if labels else 'Node'}_{abs(hash(str(props)))}" if props else "node_unknown")
             )
 
         def format_display_name(labels: List[str], props: Dict[str, Any], node_id: str) -> str:
             primary_label = labels[0] if labels else "Entity"
             if "Person" in labels or primary_label == "Person":
-                return str(props.get("name") or node_id)
+                pname = clean_person_name(str(props.get("name") or node_id))
+                return pname or str(node_id)
             if "Phone" in labels or primary_label == "Phone":
                 ph_num = str(props.get("phone_number") or node_id)
                 owner = props.get("associated_person_name") or props.get("registered_owner") or props.get("subscriber_name") or props.get("owner_name")
                 if owner and str(owner).lower() not in ["unknown", "n/a", "none"]:
-                    clean_owner = str(owner).split("\n")[0].strip()
-                    return f"{ph_num}\n({clean_owner})"
+                    clean_owner = clean_person_name(str(owner).split("\n")[0])
+                    return f"{ph_num}\n({clean_owner})" if clean_owner else ph_num
                 return ph_num
             if "BankAccount" in labels or primary_label == "BankAccount":
                 acc = props.get("account_number") or node_id
@@ -442,28 +449,34 @@ class GraphService:
             n_props = row.get("n_props") or {}
             n_labels = row.get("n_labels") or ["Entity"]
             if n_props:
-                n_id = get_node_id(n_labels, n_props)
-                if n_id not in nodes_dict:
-                    nodes_dict[n_id] = {
-                        "id": n_id,
-                        "labels": n_labels,
-                        "name": format_display_name(n_labels, n_props, n_id),
-                        "case_ids": n_props.get("case_ids") or [],
-                        "properties": n_props
-                    }
+                if "Person" in n_labels and not is_valid_person_name(n_props.get("name")):
+                    pass
+                else:
+                    n_id = get_node_id(n_labels, n_props)
+                    if n_id not in nodes_dict:
+                        nodes_dict[n_id] = {
+                            "id": n_id,
+                            "labels": n_labels,
+                            "name": format_display_name(n_labels, n_props, n_id),
+                            "case_ids": n_props.get("case_ids") or [],
+                            "properties": n_props
+                        }
 
             m_props = row.get("m_props") or {}
             m_labels = row.get("m_labels") or ["Entity"]
             if m_props:
-                m_id = get_node_id(m_labels, m_props)
-                if m_id not in nodes_dict:
-                    nodes_dict[m_id] = {
-                        "id": m_id,
-                        "labels": m_labels,
-                        "name": format_display_name(m_labels, m_props, m_id),
-                        "case_ids": m_props.get("case_ids") or [],
-                        "properties": m_props
-                    }
+                if "Person" in m_labels and not is_valid_person_name(m_props.get("name")):
+                    pass
+                else:
+                    m_id = get_node_id(m_labels, m_props)
+                    if m_id not in nodes_dict:
+                        nodes_dict[m_id] = {
+                            "id": m_id,
+                            "labels": m_labels,
+                            "name": format_display_name(m_labels, m_props, m_id),
+                            "case_ids": m_props.get("case_ids") or [],
+                            "properties": m_props
+                        }
 
             r_type = row.get("r_type")
             r_props = row.get("r_props") or {}
@@ -1000,10 +1013,11 @@ class GraphService:
         }
 
     @classmethod
-    def list_cases(cls, session: Session, status: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+    def list_cases(cls, session: Session, status: Optional[str] = None, uploaded_by: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         cypher = """
         MATCH (c:Case)
         WHERE ($status IS NULL OR c.status = $status)
+          AND ($uploaded_by IS NULL OR c.uploaded_by = $uploaded_by OR c.lead_investigator = $uploaded_by)
         OPTIONAL MATCH (c)-[:INVOLVES]->(n)
         WITH c, count(DISTINCT n) as entity_count
         ORDER BY c.created_at DESC
@@ -1015,12 +1029,13 @@ class GraphService:
                c.status as status,
                c.jurisdiction as jurisdiction,
                c.lead_investigator as lead_investigator,
+               c.uploaded_by as uploaded_by,
                c.created_date as created_date,
                c.created_at as created_at,
                c.summary as summary,
                entity_count
         """
-        rows = session.run(cypher, {"status": status, "limit": limit, "offset": offset}).data()
+        rows = session.run(cypher, {"status": status, "uploaded_by": uploaded_by, "limit": limit, "offset": offset}).data()
         cases = []
         for r in rows:
             cases.append({
@@ -1030,12 +1045,14 @@ class GraphService:
                 "status": r.get("status"),
                 "jurisdiction": r.get("jurisdiction"),
                 "lead_investigator": r.get("lead_investigator"),
+                "uploaded_by": r.get("uploaded_by"),
                 "created_date": r.get("created_date"),
                 "created_at": r.get("created_at"),
                 "summary": r.get("summary"),
                 "total_entities": int(r.get("entity_count") or 0)
             })
         return cases
+
 
     @classmethod
     def get_case_summary(cls, session: Session, case_id: str) -> Optional[Dict[str, Any]]:
@@ -1323,6 +1340,14 @@ class GraphService:
         SET n.case_ids = [c IN n.case_ids WHERE c <> $case_id]
         """
 
+        purge_orphans_cypher = """
+        MATCH (n)
+        WHERE NOT n:Case
+          AND (n.case_ids IS NULL OR size(n.case_ids) = 0)
+          AND NOT EXISTS { MATCH (n)-[*]-(c:Case) }
+        DETACH DELETE n
+        """
+
         with session.begin_transaction() as tx:
             r1 = tx.run(delete_nodes_cypher, {"case_id": resolved_case_id})
             if hasattr(r1, "consume"):
@@ -1333,6 +1358,9 @@ class GraphService:
             r3 = tx.run(update_multicase_cypher, {"case_id": resolved_case_id})
             if hasattr(r3, "consume"):
                 r3.consume()
+            r4 = tx.run(purge_orphans_cypher, {"case_id": resolved_case_id})
+            if hasattr(r4, "consume"):
+                r4.consume()
             if hasattr(tx, "commit") and not getattr(tx, "_is_mock", False):
                 try:
                     tx.commit()

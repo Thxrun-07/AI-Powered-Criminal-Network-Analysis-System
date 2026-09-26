@@ -1,0 +1,122 @@
+[
+  {
+    "badgeNumber": "IND-LE-8402",
+    "officerName": "Rahul Sharma",
+    "passwordHash": "c2f7486bd55d13e9039623981cd4d75d696a557a712f19d3c763c51849672477",
+    "department": "Special Crime & Anti-Extortion Unit",
+    "clearanceLevel": "Level 3: Lead Detective",
+    "createdAt": "2026-09-24 17:32:04"
+  },
+  {
+    "badgeNumber": "IND-TEST-7788",
+    "officerName": "Test Officer Alpha",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 17:47:47"
+  },
+  {
+    "badgeNumber": "IND-LE-9041",
+    "officerName": "Shekar",
+    "passwordHash": "a5ee2159ec3af383e93fa80a0b775b70a549076703db8d7060091b886b78cf1a",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 3: Lead Detective",
+    "createdAt": "2026-09-24 17:49:24"
+  },
+  {
+    "badgeNumber": "IND-TEST-AED6BD",
+    "officerName": "Test Officer AED6BD",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 18:05:08"
+  },
+  {
+    "badgeNumber": "IND-TEST-1B5BE7",
+    "officerName": "Test Officer 1B5BE7",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 18:19:41"
+  },
+  {
+    "badgeNumber": "IND-TEST-A0199E",
+    "officerName": "Test Officer A0199E",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 18:28:27"
+  },
+  {
+    "badgeNumber": "IND-TEST-C71F05",
+    "officerName": "Test Officer C71F05",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 18:45:25"
+  },
+  {
+    "badgeNumber": "IND-LE-1234",
+    "officerName": "Vidhya",
+    "passwordHash": "a5ee2159ec3af383e93fa80a0b775b70a549076703db8d7060091b886b78cf1a",
+    "department": "Special Crime & Anti-Extortion Unit",
+    "clearanceLevel": "Level 3: Lead Detective",
+    "createdAt": "2026-09-24 19:20:45"
+  },
+  {
+    "badgeNumber": "IND-TEST-303047",
+    "officerName": "Test Officer 303047",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 20:46:06"
+  },
+  {
+    "badgeNumber": "IND-TEST-7810B1",
+    "officerName": "Test Officer 7810B1",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 20:47:20"
+  },
+  {
+    "badgeNumber": "IND-TEST-2F05C0",
+    "officerName": "Test Officer 2F05C0",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 21:18:42"
+  },
+  {
+    "badgeNumber": "IND-TEST-C1AA1E",
+    "officerName": "Test Officer C1AA1E",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-24 21:19:38"
+  },
+  {
+    "badgeNumber": "IND-TEST-74E26F",
+    "officerName": "Test Officer 74E26F",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-26 10:09:53"
+  },
+  {
+    "badgeNumber": "IND-TEST-FA97D9",
+    "officerName": "Test Officer FA97D9",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-26 10:20:45"
+  },
+  {
+    "badgeNumber": "IND-TEST-CB1E48",
+    "officerName": "Test Officer CB1E48",
+    "passwordHash": "230a478a07439e44534a5cff6dbb366c0891140287f21b9e1ee9788f22b21469",
+    "department": "Narcotics & Organized Syndicate Bureau",
+    "clearanceLevel": "Level 4: Special Director",
+    "createdAt": "2026-09-26 10:34:05"
+  }
+]

@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 from backend.models.case_input import CaseData, CaseMetadata, EntitiesContainer, RelationshipsContainer
 from backend.models.entity import Person, Phone, BankAccount, Vehicle, SocialHandle, IPAddress, Location, CellTower, FIR
 from backend.models.relationship import CommunicationRecord, TransactionRecord, SurveillanceLogRecord, CriminalHistoryRecord, IntelligenceReportRecord
-from backend.services.ingestion_engine import is_valid_person_name
+from backend.services.ingestion_engine import is_valid_person_name, clean_person_name
 
 def map_ingestion_to_graph_data(ingestion_data: Dict[str, Any]) -> CaseData:
     """
@@ -33,6 +33,7 @@ def map_ingestion_to_graph_data(ingestion_data: Dict[str, Any]) -> CaseData:
         status=case_meta.get("status") or "OPEN",
         jurisdiction=case_meta.get("jurisdiction") or case_meta.get("department"),
         lead_investigator=case_meta.get("lead_investigator") or case_meta.get("assigned_officer"),
+        uploaded_by=case_meta.get("uploaded_by"),
         created_date=case_meta.get("created_date") or case_meta.get("reporting_date"),
         summary=case_meta.get("summary") or f"Ingested case with FIR number: {case_meta.get('fir_number') or 'N/A'}",
         tags=case_meta.get("tags") or []
@@ -52,14 +53,12 @@ def map_ingestion_to_graph_data(ingestion_data: Dict[str, Any]) -> CaseData:
     mapped_people_map: Dict[str, Person] = {}
     for p in people_items:
         if not isinstance(p, dict): continue
-        pid = p.get("person_id") or p.get("id")
-        name = p.get("name")
-        if not pid and not is_valid_person_name(name):
+        raw_name = p.get("name")
+        clean_n = clean_person_name(raw_name) if raw_name else ""
+        if not is_valid_person_name(clean_n):
             continue
-        if not pid and is_valid_person_name(name):
-            pid = f"P_{abs(hash(name)) % 10000}"
-        if not name:
-            name = f"Person {pid}"
+        pid = p.get("person_id") or p.get("id") or f"P_{abs(hash(clean_n)) % 10000}"
+        name = clean_n
         roles = p.get("roles") or ([p.get("status")] if p.get("status") else ([p.get("role")] if p.get("role") and isinstance(p.get("role"), str) else ["Suspect"]))
         if isinstance(roles, str):
             roles = [roles]

@@ -22,52 +22,96 @@ export interface PatternInsightsModuleProps {
   addToast: (msg: string, type?: string) => void;
 }
 
+// Canonical grouping of 10 insight types into 5 investigative domains (without icons)
+export interface InsightCategory {
+  id: string;
+  name: string;
+  description: string;
+  types: string[];
+}
+
+export const INSIGHT_CATEGORIES: InsightCategory[] = [
+  {
+    id: 'syndicate',
+    name: 'Syndicate & Cross-Case Overlaps',
+    description: 'Shared entities, bridge operatives, and cross-case telecommunication links connecting separate investigations',
+    types: ['SHARED_ENTITY', 'CROSS_CASE_LINK', 'BRIDGE_NODE']
+  },
+  {
+    id: 'financial',
+    name: 'Financial Laundering & Flow Chains',
+    description: 'Multi-hop transfer chains, collection funnels (high fan-in), and fund dispersal hubs (high fan-out)',
+    types: ['TRANSFER_CHAIN', 'HIGH_FAN_IN', 'HIGH_FAN_OUT']
+  },
+  {
+    id: 'infrastructure',
+    name: 'Cyber & Hardware Infrastructure',
+    description: 'Burner handset IMEI reuse across SIM cards and shared network IP / VPN exit nodes',
+    types: ['INFRASTRUCTURE_REUSE']
+  },
+  {
+    id: 'behavioral',
+    name: 'Movement & Cross-Domain Coordination',
+    description: 'Physical co-location at critical landmarks and telecommunication directly preceding bank transfers',
+    types: ['POSSIBLE_CO_LOCATION', 'CROSS_DOMAIN_PATH']
+  },
+  {
+    id: 'records',
+    name: 'Historical Police Records & Prior FIRs',
+    description: 'Matches against historical police archives, previous FIR dockets, and prior offenses',
+    types: ['PRIOR_CASE_LINK']
+  }
+];
+
+export const INSIGHT_TYPE_LABELS: Record<string, string> = {
+  SHARED_ENTITY: 'Shared Entity',
+  CROSS_CASE_LINK: 'Cross-Case Call',
+  BRIDGE_NODE: 'Bridge Actor',
+  TRANSFER_CHAIN: 'Transfer Chain',
+  HIGH_FAN_IN: 'Collection Funnel',
+  HIGH_FAN_OUT: 'Fund Dispersal',
+  INFRASTRUCTURE_REUSE: 'Hardware / IP Reuse',
+  POSSIBLE_CO_LOCATION: 'Co-Location',
+  CROSS_DOMAIN_PATH: 'Telecom-to-Bank Link',
+  PRIOR_CASE_LINK: 'Prior Record Match'
+};
+
 export function PatternInsightsModule({
   cases,
   insights,
   setInsights,
-  openAiDossier,
   addToast
 }: PatternInsightsModuleProps) {
-  const [selectedCase, setSelectedCase] = useState<string>('');
-  const [severityFilter, setSeverityFilter] = useState<string>('');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [selectedInsight, setSelectedInsight] = useState<Insight | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
   const fetchInsights = useCallback(async () => {
     setLoading(true);
     try {
-      let list: Insight[] = [];
-      if (selectedCase === '__DELTA__') {
-        list = await API.get<Insight[]>('/api/insights/delta');
-      } else if (selectedCase) {
-        list = await API.get<Insight[]>(`/api/cases/${encodeURIComponent(selectedCase)}/insights`);
-      } else {
-        const allResults = await Promise.all(
-          cases.map(c => API.get<Insight[]>(`/api/cases/${encodeURIComponent(c.case_id)}/insights`).catch(() => []))
-        );
-        list = allResults.flat();
-        const seen = new Set<string>();
-        list = list.filter(i => {
-          if (!i.insight_id || seen.has(i.insight_id)) return false;
-          seen.add(i.insight_id);
-          return true;
-        });
-      }
+      const allResults = await Promise.all(
+        cases.map(c => API.get<Insight[]>(`/api/cases/${encodeURIComponent(c.case_id)}/insights`).catch(() => []))
+      );
+      let list = allResults.flat();
+      const seen = new Set<string>();
+      list = list.filter(i => {
+        if (!i.insight_id || seen.has(i.insight_id)) return false;
+        seen.add(i.insight_id);
+        return true;
+      });
       setInsights(list);
     } catch (e) {
       addToast((e as Error).message, 'err');
     } finally {
       setLoading(false);
     }
-  }, [selectedCase, cases, setInsights, addToast]);
+  }, [cases, setInsights, addToast]);
 
   useEffect(() => {
     fetchInsights();
   }, [fetchInsights]);
 
-  const [searchTerm, setSearchTerm] = useState<string>('');
-
+  // KPIs
   const kpis = useMemo(() => {
     const total = (insights || []).length;
     const critical = (insights || []).filter(i => (i.severity || '').toUpperCase() === 'CRITICAL').length;
@@ -76,178 +120,301 @@ export function PatternInsightsModule({
     return { total, critical, high, crossCase };
   }, [insights]);
 
+  // Counts per category
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: (insights || []).length };
+    INSIGHT_CATEGORIES.forEach(cat => {
+      counts[cat.id] = (insights || []).filter(i => cat.types.includes(i.insight_type || '')).length;
+    });
+    return counts;
+  }, [insights]);
+
+  // Filtered insights list based on investigative domain dropdown
   const filteredInsights = useMemo(() => {
     let list = insights || [];
-    if (severityFilter) {
-      list = list.filter(i => (i.severity || '').toUpperCase() === severityFilter);
-    }
-    if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
-      list = list.filter(i =>
-        (i.title || '').toLowerCase().includes(q) ||
-        (i.derived_interpretation || '').toLowerCase().includes(q) ||
-        (i.insight_type || '').toLowerCase().includes(q) ||
-        (i.observed_facts || []).some(f => f.toLowerCase().includes(q))
-      );
+    if (activeCategory !== 'all') {
+      const cat = INSIGHT_CATEGORIES.find(c => c.id === activeCategory);
+      if (cat) {
+        list = list.filter(i => cat.types.includes(i.insight_type || ''));
+      }
     }
     return list;
-  }, [insights, severityFilter, searchTerm]);
+  }, [insights, activeCategory]);
+
+  // Grouped by Category data
+  const groupedByCategory = useMemo(() => {
+    const groups: Array<{ category: InsightCategory; items: Insight[] }> = [];
+    INSIGHT_CATEGORIES.forEach(cat => {
+      if (activeCategory !== 'all' && activeCategory !== cat.id) return;
+      const items = (insights || []).filter(i => cat.types.includes(i.insight_type || ''));
+      if (items.length > 0 || activeCategory === cat.id) {
+        groups.push({ category: cat, items });
+      }
+    });
+    return groups;
+  }, [insights, activeCategory]);
+
+  // Helper renderer for a single insight card (no icons)
+  const renderInsightCard = (i: Insight) => {
+    const sev = (i.severity || 'MEDIUM').toUpperCase();
+    const sevClass = sev === 'CRITICAL' ? 'crit' : sev === 'HIGH' ? 'high' : sev === 'MEDIUM' ? 'med' : 'low';
+    const typeLabel = INSIGHT_TYPE_LABELS[i.insight_type || ''] || i.insight_type || 'Insight';
+
+    return (
+      <div
+        key={i.insight_id}
+        className="card insight-card transition-all duration-200"
+        style={{
+          marginBottom: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          borderLeft: sev === 'CRITICAL' ? '4px solid #ef4444' : sev === 'HIGH' ? '4px solid #f59e0b' : '1px solid var(--border)',
+          background: 'var(--surface)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px' }}>
+          <span className={`tag ${sevClass}`} style={{ fontSize: '10px', padding: '2px 8px' }}>
+            {sev}
+          </span>
+          <span className="tag plain mono" style={{ fontSize: '10.5px' }}>
+            {typeLabel}
+          </span>
+        </div>
+
+        <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '10px', color: 'var(--text)', lineHeight: 1.35 }}>
+          {renderInlineMarkdown(esc(i.title))}
+        </div>
+
+        {/* Observed facts snippet */}
+        {(i.observed_facts || []).slice(0, 2).map((f, idx) => (
+          <div key={idx} style={{ fontSize: '11.5px', color: 'var(--text-faint)', display: 'flex', gap: '6px', marginBottom: '4px' }}>
+            <span style={{ color: 'var(--text-faint)' }}>-</span>
+            <div style={{ flex: 1 }}>{renderInlineMarkdown(esc(f))}</div>
+          </div>
+        ))}
+
+        {/* Associated Case IDs */}
+        <div style={{ marginTop: '12px', display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '10.5px', color: 'var(--text-faint)', marginRight: '2px' }}>Cases:</span>
+          {(i.case_ids || []).map(c => (
+            <span
+              key={c}
+              className="tag open mono"
+              style={{ fontSize: '10px', padding: '1px 6px' }}
+            >
+              {esc(c)}
+            </span>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className="neu-btn ghost w-full transition-colors"
+          style={{ marginTop: '12px', width: '100%', fontSize: '11.5px', padding: '6px 12px' }}
+          onClick={() => setSelectedInsight(i)}
+        >
+          Examine Evidence
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-4" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Top AI Forensic Analytics KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-        <div className="card flex items-center gap-3" style={{ marginBottom: 0, padding: '14px 16px' }}>
-          <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
-            🧠
+      {/* Top Forensic Analytics KPIs - No Icons */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+        <div className="card" style={{ marginBottom: 0, padding: '14px 18px' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+            TOTAL DETECTIONS
           </div>
-          <div>
-            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total AI Detections</div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text)' }}>{kpis.total}</div>
-          </div>
-        </div>
-
-        <div className="card flex items-center gap-3" style={{ marginBottom: 0, padding: '14px 16px' }}>
-          <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
-            🚨
-          </div>
-          <div>
-            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Critical Threats</div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--red)' }}>{kpis.critical}</div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text)', marginTop: '4px' }}>
+            {kpis.total}
           </div>
         </div>
 
-        <div className="card flex items-center gap-3" style={{ marginBottom: 0, padding: '14px 16px' }}>
-          <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(249, 115, 22, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
-            ⚠️
+        <div className="card" style={{ marginBottom: 0, padding: '14px 18px' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+            CRITICAL THREATS
           </div>
-          <div>
-            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>High Severity</div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--yellow)' }}>{kpis.high}</div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#ef4444', marginTop: '4px' }}>
+            {kpis.critical}
           </div>
         </div>
 
-        <div className="card flex items-center gap-3" style={{ marginBottom: 0, padding: '14px 16px' }}>
-          <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
-            🔗
+        <div className="card" style={{ marginBottom: 0, padding: '14px 18px' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+            HIGH SEVERITY
           </div>
-          <div>
-            <div style={{ fontSize: '11px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cross-Case Links</div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--green)' }}>{kpis.crossCase}</div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#f59e0b', marginTop: '4px' }}>
+            {kpis.high}
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 0, padding: '14px 18px' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+            CROSS-CASE OVERLAPS
+          </div>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text)', marginTop: '4px' }}>
+            {kpis.crossCase}
           </div>
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 0 }}>
-        <div className="card-header flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
-            <div className="card-title font-semibold text-base">Automated Forensic Detectors</div>
-          </div>
-          <div className="row flex flex-wrap items-center gap-2.5" style={{gap:'10px', flexWrap:'wrap'}}>
-            <input
-              type="text"
-              className="control"
-              placeholder="Filter pattern insights…"
-              value={searchTerm}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-              style={{ minWidth: '180px', fontSize: '12px' }}
-            />
-            <div className="field" style={{minWidth:'180px'}}>
-              <select className="control" value={selectedCase} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedCase(e.target.value)}>
-                <option value="">All Ingested Cases</option>
-                <option value="__DELTA__">Cross-Case Delta Insights Only</option>
-                {cases.map(c => <option key={c.case_id} value={c.case_id}>Case: {esc(c.case_name || c.case_id)}</option>)}
-              </select>
-            </div>
-            <select className="control" value={severityFilter} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSeverityFilter(e.target.value)} style={{maxWidth:'150px'}}>
-              <option value="">All Severities</option>
-              <option value="CRITICAL">CRITICAL</option>
-              <option value="HIGH">HIGH</option>
-              <option value="MEDIUM">MEDIUM</option>
-              <option value="LOW">LOW</option>
-            </select>
-            <button className="neu-btn primary inline-flex items-center gap-1.5 transition-colors" onClick={() => {
-              if (selectedCase && selectedCase !== '__DELTA__') {
-                const cObj = cases.find(c => c.case_id === selectedCase);
-                openAiDossier(selectedCase, cObj?.case_name || selectedCase);
-              } else {
-                openAiDossier("ALL", "All Ingested Cases Ecosystem & Cross-Links");
-              }
-            }} style={{display:'inline-flex', alignItems:'center', gap:'6px'}}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
-              ✨ AI Dossier
-            </button>
-          </div>
+      {/* Clean Domain Filter Section - Dropdown Selection */}
+      <div className="card" style={{ marginBottom: 0, padding: '16px 18px' }}>
+        <div className="field" style={{ maxWidth: '380px' }}>
+          <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-faint)', marginBottom: '8px', display: 'block' }}>
+            Filter by Investigative Domain
+          </label>
+          <select
+            className="control"
+            value={activeCategory}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setActiveCategory(e.target.value)}
+            style={{ fontSize: '12px', padding: '7px 12px', width: '100%' }}
+          >
+            <option value="all">All Domains ({categoryCounts.all || 0})</option>
+            {INSIGHT_CATEGORIES.map(cat => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name} ({categoryCounts[cat.id] || 0})
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
+      {/* Main Content Area */}
       {loading ? (
-        <div><div className="skeleton sk-row"></div><div className="skeleton sk-row"></div></div>
+        <div>
+          <div className="skeleton sk-row"></div>
+          <div className="skeleton sk-row"></div>
+        </div>
       ) : !filteredInsights || !filteredInsights.length ? (
-        <div className="empty">
-          <svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M12 3l1.9 5.6L19 10l-5.1 1.9L12 17.5l-1.9-5.6L5 10l5.1-1.4L12 3Z"/></svg>
-          No pattern insights match the selected filter. Ingest additional cases or communications to trigger detection.
+        <div className="empty card" style={{ padding: '36px 20px', textAlign: 'center' }}>
+          <div style={{ fontWeight: 600, color: 'var(--text)' }}>No Pattern Insights Found</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-faint)', maxWidth: '420px', marginTop: '4px' }}>
+            No detected graph patterns match your selected investigative domain.
+          </div>
+        </div>
+      ) : activeCategory === 'all' ? (
+        /* When 'All Domains' is selected: Organized by domain categories */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {groupedByCategory.map(({ category, items }) => (
+            <div key={category.id} className="card" style={{ marginBottom: 0, padding: 0, overflow: 'hidden' }}>
+              {/* Category Group Header (No icons) */}
+              <div
+                style={{
+                  padding: '12px 18px',
+                  background: 'var(--surface)',
+                  borderBottom: '1px solid var(--border)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text)' }}>
+                    {category.name}
+                  </span>
+                  <span className="tag plain" style={{ fontWeight: 700, fontSize: '10.5px' }}>
+                    {items.length} {items.length === 1 ? 'Detection' : 'Detections'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-faint)', marginTop: '2px' }}>
+                  {category.description}
+                </div>
+              </div>
+
+              {/* Section Cards */}
+              <div style={{ padding: '16px', background: 'var(--bg0)' }}>
+                <div className="cards-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '14px' }}>
+                  {items.map(renderInsightCard)}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
-        <div className="cards-grid" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))'}}>
-          {filteredInsights.map(i => {
-            const sev = (i.severity || 'MEDIUM').toUpperCase();
-            const sevClass = sev === 'CRITICAL' ? 'crit' : sev === 'HIGH' ? 'high' : sev === 'MEDIUM' ? 'med' : 'low';
-            return (
-              <div key={i.insight_id} className="card transition-all duration-200 flex flex-col" style={{marginBottom:0, display:'flex', flexDirection:'column'}}>
-                <div className="flex items-center justify-between gap-2 mb-3" style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', marginBottom:'12px'}}>
-                  <span className={`tag ${sevClass}`}>{sev}</span>
-                  <span className="mono text-xs" style={{fontSize:'11px', color:'var(--text-faint)'}}>{esc(i.insight_type)}</span>
-                </div>
-                <div className="font-bold text-sm text-foreground mb-2" style={{fontWeight:700, fontSize:'15px', marginBottom:'8px', color:'var(--text)'}}>
-                  {renderInlineMarkdown(esc(i.title))}
-                </div>
-                <div style={{fontSize:'13px', color:'var(--text-dim)', marginBottom:'14px', flex:1, lineHeight:1.5}}>
-                  {renderInlineMarkdown(esc(i.derived_interpretation))}
-                </div>
-                {(i.observed_facts || []).slice(0, 2).map((f, idx) => (
-                  <div key={idx} className="flex gap-1.5 mb-1 text-xs" style={{fontSize:'12px', color:'var(--text-faint)', display:'flex', gap:'6px', marginBottom:'4px'}}>
-                    <span style={{color:'var(--accent)'}}>●</span>
-                    <div>{renderInlineMarkdown(esc(f))}</div>
-                  </div>
-                ))}
-                <div className="flex gap-1.5 flex-wrap mt-3.5" style={{marginTop:'14px', display:'flex', gap:'6px', flexWrap:'wrap'}}>
-                  {(i.case_ids || []).map(c => <span key={c} className="tag plain mono">{esc(c)}</span>)}
-                </div>
-                <button className="neu-btn ghost w-full mt-3.5 transition-colors" style={{marginTop:'14px', width:'100%'}} onClick={() => setSelectedInsight(i)}>Examine Evidence</button>
-              </div>
-            );
-          })}
+        /* When a specific domain is selected from dropdown: Clean grid */
+        <div className="cards-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '14px' }}>
+          {filteredInsights.map(renderInsightCard)}
         </div>
       )}
 
+      {/* Forensic Evidence Details Modal (No icons) */}
       {selectedInsight && (
         <div className="modal-overlay open" onClick={() => setSelectedInsight(null)}>
-          <div className="modal" onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()}>
-            <button className="close neu-btn ghost" onClick={() => setSelectedInsight(null)} style={{float:'right'}}>✕</button>
-            <div className="flex items-center gap-2.5 mb-2.5" style={{display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px'}}>
-              <span className={`tag ${(selectedInsight.severity||'med').toLowerCase()}`}>{esc(selectedInsight.severity)}</span>
-              <span className="tag plain mono">{esc(selectedInsight.insight_type)} · {esc(selectedInsight.insight_id)}</span>
+          <div className="modal" onClick={(e: React.MouseEvent<HTMLDivElement>) => e.stopPropagation()} style={{ maxWidth: '640px' }}>
+            <button className="close neu-btn ghost" onClick={() => setSelectedInsight(null)} style={{ float: 'right' }}>
+              ✕
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <span className={`tag ${(selectedInsight.severity || 'med').toLowerCase()}`} style={{ fontSize: '11px' }}>
+                {esc(selectedInsight.severity)}
+              </span>
+              <span className="tag plain mono" style={{ fontSize: '11px' }}>
+                {INSIGHT_TYPE_LABELS[selectedInsight.insight_type || ''] || esc(selectedInsight.insight_type)} · {esc(selectedInsight.insight_id)}
+              </span>
             </div>
-            <h3 className="font-bold text-lg">{renderInlineMarkdown(esc(selectedInsight.title))}</h3>
-            <div style={{fontSize:'14.5px', color:'var(--text)', marginBottom:'18px', lineHeight:1.6}}>
+
+            <h3 style={{ fontWeight: 800, fontSize: '17px', color: 'var(--text)', marginBottom: '8px' }}>
+              {renderInlineMarkdown(esc(selectedInsight.title))}
+            </h3>
+
+            <div style={{ fontSize: '13.5px', color: 'var(--text-dim)', marginBottom: '16px', lineHeight: 1.55 }}>
               {renderInlineMarkdown(esc(selectedInsight.derived_interpretation))}
             </div>
-            <div style={{fontWeight:700, fontSize:'13.5px', marginBottom:'8px'}}>Observed Graph Facts</div>
+
+            {/* Observed Graph Facts */}
+            <div style={{ fontWeight: 700, fontSize: '12.5px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-dim)', marginBottom: '8px' }}>
+              Observed Graph Facts
+            </div>
             {(selectedInsight.observed_facts || []).map((f, idx) => (
-              <div key={idx} className="flex gap-2 mb-1.5 text-sm" style={{fontSize:'13px', color:'var(--text-dim)', marginBottom:'6px', display:'flex', gap:'8px'}}>
-                <span style={{color:'var(--accent)'}}>➔</span>
+              <div key={idx} style={{ fontSize: '12.5px', color: 'var(--text)', marginBottom: '6px', display: 'flex', gap: '8px', lineHeight: 1.45 }}>
+                <span style={{ color: 'var(--text-faint)' }}>-</span>
                 <div>{renderInlineMarkdown(esc(f))}</div>
               </div>
             ))}
+
+            {/* Alternative Explanations */}
             {(selectedInsight.alternative_explanations || []).length > 0 && (
               <React.Fragment>
-                <div style={{fontWeight:700, fontSize:'13.5px', margin:'18px 0 8px'}}>Alternative Explanations</div>
-                {selectedInsight.alternative_explanations?.map((a, idx) => <div key={idx} style={{fontSize:'13px', color:'var(--text-faint)', marginBottom:'4px'}}>· {esc(a)}</div>)}
+                <div style={{ fontWeight: 700, fontSize: '12.5px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-dim)', margin: '16px 0 8px' }}>
+                  Alternative Explanations (Bias Safeguards)
+                </div>
+                {selectedInsight.alternative_explanations?.map((a, idx) => (
+                  <div key={idx} style={{ fontSize: '12px', color: 'var(--text-faint)', marginBottom: '4px', lineHeight: 1.4 }}>
+                    - {esc(a)}
+                  </div>
+                ))}
               </React.Fragment>
             )}
-            <div className="p-3 rounded-lg border text-xs" style={{marginTop:'20px', padding:'12px', borderRadius:'10px', background:'var(--bg1)', border:'1px solid var(--border)', fontSize:'12px', color:'var(--text-faint)'}}>
+
+            {/* Entities Involved */}
+            {(selectedInsight.entities_involved || []).length > 0 && (
+              <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                  Entities Involved
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {selectedInsight.entities_involved?.map(ent => (
+                    <span key={ent} className="tag plain mono" style={{ fontSize: '10.5px' }}>
+                      {esc(ent)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Legal Disclaimer */}
+            <div
+              style={{
+                marginTop: '18px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: 'var(--bg0)',
+                border: '1px solid var(--border)',
+                fontSize: '11px',
+                color: 'var(--text-faint)',
+                lineHeight: 1.4
+              }}
+            >
               {esc(selectedInsight.disclaimer || 'Intelligence alert generated automatically from graph topology.')}
             </div>
           </div>

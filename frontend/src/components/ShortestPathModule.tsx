@@ -89,9 +89,6 @@ export function ShortestPathModule({ openEntityModal, addToast }: ShortestPathMo
             Trace Path
           </button>
         </div>
-        <div className="mt-2.5 text-xs" style={{ marginTop: '10px', fontSize: '12px', color: 'var(--text-faint)' }}>
-          Ambiguity safe: if a name resolves to multiple persons, the system presents candidate keys for disambiguation.
-        </div>
       </div>
 
       <div className="card">

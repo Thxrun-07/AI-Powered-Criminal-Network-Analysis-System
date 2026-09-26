@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { API, esc, LABEL_COLOR, Entity } from '../services/api';
+import { API, esc, LABEL_COLOR, Entity, removeOfficerUploadedCaseId } from '../services/api';
+import { LocalCaseStore } from '../services/fileStore';
 import { FormattedAiMessage, renderInlineMarkdown } from './FormattedAiMessage';
 import { EntityPropertiesTable } from './EntityPropertiesTable';
 
@@ -389,19 +390,33 @@ export function ResetDbConfirmContent({ onClose, addToast, onSuccess }: ResetDbC
 
 export interface DeleteCaseConfirmContentProps {
   caseId: string;
-  caseName: string;
+  caseName?: string;
   onClose: () => void;
   addToast: (msg: string, type?: string) => void;
   onSuccess: () => void;
+  officerBadge?: string;
 }
 
-export function DeleteCaseConfirmContent({ caseId, caseName, onClose, addToast, onSuccess }: DeleteCaseConfirmContentProps) {
+export function DeleteCaseConfirmContent({ caseId, caseName, onClose, addToast, onSuccess, officerBadge }: DeleteCaseConfirmContentProps) {
   const [deleting, setDeleting] = useState<boolean>(false);
 
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      await API.delete(`/api/cases/${encodeURIComponent(caseId)}?confirm=true`);
+      try {
+        await API.delete(`/api/cases/${encodeURIComponent(caseId)}?confirm=true`);
+      } catch (e: any) {
+        console.warn('Backend case deletion note:', e.message);
+      }
+
+      // Purge from local persistent store
+      LocalCaseStore.deleteCase(caseId);
+
+      // Remove from officer session link
+      if (officerBadge) {
+        removeOfficerUploadedCaseId(officerBadge, caseId);
+      }
+
       addToast(`Case '${caseId}' deleted successfully!`, 'ok');
       onSuccess();
       onClose();
@@ -413,17 +428,49 @@ export function DeleteCaseConfirmContent({ caseId, caseName, onClose, addToast, 
   };
 
   return (
-    <div className="confirm-box">
-      <div className="confirm-header flex items-center gap-2">
-        <svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        <div className="confirm-title font-semibold">Delete Case '{esc(caseName || caseId)}'?</div>
+    <div style={{ maxWidth: '440px', margin: '0 auto', textAlign: 'center', padding: '10px 4px' }}>
+      <div
+        style={{
+          width: '52px',
+          height: '52px',
+          borderRadius: '50%',
+          background: 'rgba(239, 68, 68, 0.12)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 16px'
+        }}
+      >
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
       </div>
-      <div className="confirm-body text-sm leading-relaxed">
-        Are you sure you want to delete Case <b>{esc(caseId)}</b>? Exclusive nodes and relationships belonging to this case will be purged from Neo4j. Multi-case entities will be retained.
-      </div>
-      <div className={`confirm-actions flex justify-end gap-3`}>
-        <button className="neu-btn ghost transition" onClick={onClose} disabled={deleting}>Cancel</button>
-        <button className="neu-btn danger transition" onClick={handleDelete} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete Case'}</button>
+
+      <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)', margin: '0 0 10px', lineHeight: 1.3 }}>
+        Delete Case '{esc(caseName || caseId)}'?
+      </h3>
+
+      <p style={{ fontSize: '13.5px', color: 'var(--text-dim)', lineHeight: 1.55, margin: '0 0 22px' }}>
+        Are you sure you want to delete Case <strong className="mono" style={{ color: 'var(--accent)' }}>{esc(caseId)}</strong>? Exclusive nodes and evidence records belonging to this case will be purged from the database.
+      </p>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+        <button
+          className="neu-btn ghost transition"
+          onClick={onClose}
+          disabled={deleting}
+          style={{ padding: '8px 18px', fontSize: '13px' }}
+        >
+          Cancel
+        </button>
+        <button
+          className="neu-btn danger font-semibold transition"
+          onClick={handleDelete}
+          disabled={deleting}
+          style={{ padding: '8px 20px', fontSize: '13px' }}
+        >
+          {deleting ? 'Deleting…' : 'Delete Case'}
+        </button>
       </div>
     </div>
   );

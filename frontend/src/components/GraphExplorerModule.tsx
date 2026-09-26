@@ -35,14 +35,9 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     {
       sender: 'bot',
       model: 'Atlas AI Graph Extractor',
-      content: "Clumsy or cluttered graph? Tell me what to extract — e.g. \"extract only CDR graph\", \"extract person graph\", or \"extract financial flow\" — and I will isolate that sub-network on canvas for you.",
+      content: "How can I assist your investigation?",
       chips: [
-        '📞 Extract only CDR graph',
-        '👥 Extract Person graph',
-        '💳 Extract Financial flow',
-        '🌐 Reset full graph',
-        '🎯 Who are the main targets?',
-        '💸 Money laundering flow'
+        'Who is the main suspect?'
       ]
     }
   ]);
@@ -234,7 +229,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         }
       }
 
-      const fontSize = isCase ? 14 : (isPerson ? 13 : (isPhone ? 12 : 11.5));
+      const fontSize = isCase ? 15 : (isPerson ? 14 : (isPhone ? 13 : 12.5));
 
       nodes.push({
         id: n.id,
@@ -247,23 +242,23 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         borderWidthSelected: 4.5,
         shadow: {
           enabled: true,
-          color: isLight ? 'rgba(0, 0, 0, 0.16)' : 'rgba(0, 0, 0, 0.55)',
-          size: 7,
+          color: isLight ? 'rgba(15, 23, 42, 0.12)' : 'rgba(0, 0, 0, 0.55)',
+          size: 6,
           x: 2,
           y: 2
         },
         color: {
           background: nodeBg,
           border: isLight ? '#ffffff' : '#0f172a',
-          highlight: { background: nodeBg, border: isLight ? '#0284c7' : '#38bdf8' },
-          hover: { background: nodeBg, border: isLight ? '#0284c7' : '#38bdf8' }
+          highlight: { background: nodeBg, border: isLight ? '#1d4ed8' : '#38bdf8' },
+          hover: { background: nodeBg, border: isLight ? '#1d4ed8' : '#38bdf8' }
         },
         font: {
           color: isLight ? '#0f172a' : '#f8fafc',
           size: fontSize,
           face: 'Inter, system-ui, -apple-system, sans-serif',
           vadjust: 4,
-          strokeWidth: isLight ? 3 : 2.5,
+          strokeWidth: isLight ? 4 : 2.5,
           strokeColor: isLight ? '#ffffff' : '#0f172a'
         }
       });
@@ -448,10 +443,10 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     if (clientDetected && clientDetected !== graphType) {
       setGraphType(clientDetected);
       addToast(
-        clientDetected === 'cdr' ? '📞 AI Extractor: Switched view to CDR telecommunications only' :
-        clientDetected === 'person' ? '👥 AI Extractor: Switched view to Person-to-Person syndicate only' :
-        clientDetected === 'financial' ? '💳 AI Extractor: Switched view to Financial money flow only' :
-        '🌐 AI Extractor: Restored full ecosystem graph',
+        clientDetected === 'cdr' ? 'AI Extractor: Switched view to CDR telecommunications only' :
+        clientDetected === 'person' ? 'AI Extractor: Switched view to Person-to-Person syndicate only' :
+        clientDetected === 'financial' ? 'AI Extractor: Switched view to Financial money flow only' :
+        'AI Extractor: Restored full ecosystem graph',
         'ok'
       );
     }
@@ -474,10 +469,7 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
         model: res.ai_model || 'Atlas AI Graph Extractor',
         content: res.answer || 'No specific inference generated.',
         chips: [
-          '📞 Extract only CDR graph',
-          '👥 Extract Person graph',
-          '💳 Extract Financial flow',
-          '🌐 Reset full graph'
+          'Who is the main suspect?'
         ]
       }]);
     } catch (err: any) {
@@ -504,12 +496,11 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
     <div>
       <div className="card">
         <div className="card-header flex items-center justify-between gap-3 flex-wrap">
-          <div className="card-title flex items-center gap-2 font-semibold">
-            <svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round"><path d="M12 3a2 2 0 0 1 2 2c0 .4-.1.8-.3 1.1l3.4 5.4c.3-.1.6-.2.9-.2a2 2 0 1 1 0 4c-.3 0-.6-.1-.9-.2l-3.4 5.4c.2.3.3.7.3 1.1a2 2 0 1 1-3.6-1.1L8.9 15.5c-.3.1-.6.2-.9.2a2 2 0 1 1 0-4c.3 0 .6.1.8.2l3.4-5.4c-.2-.3-.3-.7-.3-1.1a2 2 0 0 1 2-2Z"/></svg>
+          <div className="card-title font-semibold">
             Network Topology Explorer
           </div>
-          <div className="row flex items-end gap-2.5 flex-wrap" style={{gap:'10px', alignItems:'flex-end', flexWrap:'wrap'}}>
-            <div className="field" style={{minWidth:'170px'}}>
+          <div className="row flex items-end gap-2 flex-wrap" style={{gap:'6px', alignItems:'flex-end', flexWrap:'wrap'}}>
+            <div className="field" style={{minWidth:'150px'}}>
               <label>Case Filter</label>
               <select className="control" value={caseFilter} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => { setCaseFilter(e.target.value); setSelectedCase(e.target.value || null); }}>
                 <option value="">All Ingested Cases</option>
@@ -517,16 +508,16 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
               </select>
             </div>
 
-            <div className="field" style={{minWidth:'160px'}}>
+            <div className="field" style={{minWidth:'140px'}}>
               <label>Layout Structure</label>
               <select className="control" value={layoutType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLayoutType(e.target.value)}>
-                <option value="structured">🌟 Structured Organic</option>
-                <option value="hierarchy_ud">🌳 Hierarchical Flow (Top-to-Bottom)</option>
-                <option value="hierarchy_lr">🏛️ Pipeline Flow (Left-to-Right)</option>
-                <option value="radial">🎯 Central Core & Radial Orbit</option>
+                <option value="structured">Structured Organic</option>
+                <option value="hierarchy_ud">Hierarchical Flow (Top-to-Bottom)</option>
+                <option value="hierarchy_lr">Pipeline Flow (Left-to-Right)</option>
+                <option value="radial">Central Core & Radial Orbit</option>
               </select>
             </div>
-            <div className="field" style={{maxWidth:'120px'}}>
+            <div className="field" style={{maxWidth:'110px'}}>
               <label>Edge Labels</label>
               <select className="control" value={edgeLabelMode} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEdgeLabelMode(e.target.value)}>
                 <option value="clean">Clean (Hide INVOLVES)</option>
@@ -534,80 +525,70 @@ export function GraphExplorerModule({ cases, selectedCase, setSelectedCase, open
                 <option value="none">No Edge Text</option>
               </select>
             </div>
-            <div className="field" style={{maxWidth:'95px'}}>
-              <label>Limit</label>
-              <select className="control" value={limit} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLimit(Number(e.target.value))}>
-                <option value="300">300</option>
-                <option value="600">600</option>
-                <option value="1200">1200</option>
-                <option value="2500">2500</option>
-              </select>
-            </div>
-            <div className="flex gap-2 items-end" style={{display:'flex', gap:'8px', alignItems:'flex-end'}}>
-              <button className="neu-btn primary transition hover:opacity-90" disabled={loading} onClick={fetchGraph}>{loading ? 'Rendering…' : 'Render'}</button>
-              <button className="neu-btn ghost transition" onClick={() => setAiPanelCollapsed(prev => !prev)} style={{display:'inline-flex', alignItems:'center', gap:'6px', color:'var(--accent)'}}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+            <div className="flex gap-1.5 items-end" style={{display:'flex', gap:'6px', alignItems:'flex-end'}}>
+              <button className="neu-btn primary transition hover:opacity-90" disabled={loading} onClick={fetchGraph} style={{padding:'5px 12px', fontSize:'11.5px'}}>{loading ? 'Rendering…' : 'Render'}</button>
+              <button className="neu-btn ghost transition" onClick={() => setAiPanelCollapsed(prev => !prev)} style={{display:'inline-flex', alignItems:'center', gap:'5px', color:'var(--accent)', padding:'5px 10px', fontSize:'11.5px'}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
                 <span>{aiPanelCollapsed ? 'Show Copilot' : 'AI Copilot'}</span>
               </button>
-              <button className="neu-btn ghost transition" onClick={() => { setPhysicsEnabled(p => !p); addToast(physicsEnabled ? 'Physics locked into place' : 'Physics simulation resumed', 'info'); }}>
-                <span>{physicsEnabled ? '⏸ Pause' : '▶ Live Bounce'}</span>
+              <button className="neu-btn ghost transition" onClick={() => { setPhysicsEnabled(p => !p); addToast(physicsEnabled ? 'Physics locked into place' : 'Physics simulation resumed', 'info'); }} style={{padding:'5px 10px', fontSize:'11.5px'}}>
+                <span>{physicsEnabled ? 'Pause' : 'Live Bounce'}</span>
               </button>
-              <button className="neu-btn ghost transition" onClick={() => { if (networkRef.current) networkRef.current.fit({animation:{duration:600}}); }}>Fit</button>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3.5 mb-3 flex-wrap" style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'14px', marginBottom:'12px', flexWrap:'wrap'}}>
-          <div className="flex items-center gap-2 flex-wrap" style={{display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap'}}>
-            <span className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--text-faint)', fontSize:'11px', fontWeight:700}}>Quick Extract:</span>
-            <div style={{display:'inline-flex', background:'var(--bg1)', border:'1px solid var(--border)', borderRadius:'8px', padding:'2px', gap:'2px'}}>
+        <div className="flex items-center justify-between gap-3 mb-2 flex-wrap" style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', marginBottom:'10px', flexWrap:'wrap'}}>
+          <div className="flex items-center gap-2 flex-wrap" style={{display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap'}}>
+            <span className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--text-faint)', fontSize:'10px', fontWeight:700}}>Quick Extract:</span>
+            <div style={{display:'inline-flex', background:'var(--bg1)', border:'1px solid var(--border)', borderRadius:'6px', padding:'2px', gap:'2px'}}>
               <button
                 type="button"
                 className={`neu-btn ghost ${graphType === 'all' ? 'active' : ''}`}
-                style={{padding:'4px 10px', fontSize:'11.5px', borderRadius:'6px', fontWeight:600, background: graphType === 'all' ? 'var(--accent)' : 'transparent', color: graphType === 'all' ? '#070a12' : 'var(--text)'}}
-                onClick={() => { setGraphType('all'); addToast('🌐 Showing full ecosystem graph', 'info'); }}
+                style={{padding:'3px 9px', fontSize:'10.5px', borderRadius:'4px', fontWeight:600, background: graphType === 'all' ? 'var(--accent)' : 'transparent', color: graphType === 'all' ? '#ffffff' : 'var(--text)'}}
+                onClick={() => { setGraphType('all'); addToast('Showing full ecosystem graph', 'info'); }}
               >
-                🌐 Full
+                Full
               </button>
               <button
                 type="button"
                 className={`neu-btn ghost ${graphType === 'cdr' ? 'active' : ''}`}
-                style={{padding:'4px 10px', fontSize:'11.5px', borderRadius:'6px', fontWeight:600, background: graphType === 'cdr' ? 'var(--accent)' : 'transparent', color: graphType === 'cdr' ? '#070a12' : 'var(--text)'}}
-                onClick={() => { setGraphType('cdr'); addToast('📞 Extracted CDR telecommunications graph', 'ok'); }}
+                style={{padding:'3px 9px', fontSize:'10.5px', borderRadius:'4px', fontWeight:600, background: graphType === 'cdr' ? 'var(--accent)' : 'transparent', color: graphType === 'cdr' ? '#ffffff' : 'var(--text)'}}
+                onClick={() => { setGraphType('cdr'); addToast('Extracted CDR telecommunications graph', 'ok'); }}
               >
-                📞 CDR Only
+                CDR Only
               </button>
               <button
                 type="button"
                 className={`neu-btn ghost ${graphType === 'person' ? 'active' : ''}`}
-                style={{padding:'4px 10px', fontSize:'11.5px', borderRadius:'6px', fontWeight:600, background: graphType === 'person' ? 'var(--accent)' : 'transparent', color: graphType === 'person' ? '#070a12' : 'var(--text)'}}
-                onClick={() => { setGraphType('person'); addToast('👥 Extracted Person-to-Person syndicate graph', 'ok'); }}
+                style={{padding:'3px 9px', fontSize:'10.5px', borderRadius:'4px', fontWeight:600, background: graphType === 'person' ? 'var(--accent)' : 'transparent', color: graphType === 'person' ? '#ffffff' : 'var(--text)'}}
+                onClick={() => { setGraphType('person'); addToast('Extracted Person-to-Person syndicate graph', 'ok'); }}
               >
-                👥 Person Only
+                Person Only
               </button>
               <button
                 type="button"
                 className={`neu-btn ghost ${graphType === 'financial' ? 'active' : ''}`}
-                style={{padding:'4px 10px', fontSize:'11.5px', borderRadius:'6px', fontWeight:600, background: graphType === 'financial' ? 'var(--accent)' : 'transparent', color: graphType === 'financial' ? '#070a12' : 'var(--text)'}}
-                onClick={() => { setGraphType('financial'); addToast('💳 Extracted Financial flow graph', 'ok'); }}
+                style={{padding:'3px 9px', fontSize:'10.5px', borderRadius:'4px', fontWeight:600, background: graphType === 'financial' ? 'var(--accent)' : 'transparent', color: graphType === 'financial' ? '#ffffff' : 'var(--text)'}}
+                onClick={() => { setGraphType('financial'); addToast('Extracted Financial flow graph', 'ok'); }}
               >
-                💳 Financial Only
+                Financial Only
               </button>
             </div>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs ml-2" style={{display:'inline-flex', alignItems:'center', gap:'7px', fontSize:'12.5px', color:'var(--text-dim)', cursor:'pointer', marginLeft:'8px'}}>
+            <label className="inline-flex items-center gap-1 cursor-pointer text-xs ml-2" style={{display:'inline-flex', alignItems:'center', gap:'5px', fontSize:'11px', color:'var(--text-dim)', cursor:'pointer', marginLeft:'6px'}}>
               <input type="checkbox" checked={hideIsolated} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHideIsolated(e.target.checked)} style={{cursor:'pointer'}} />
               Hide Isolated
             </label>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs ml-2" style={{display:'inline-flex', alignItems:'center', gap:'7px', fontSize:'12.5px', color: hideCaseLinks ? 'var(--accent)' : 'var(--text-dim)', cursor:'pointer', marginLeft:'8px'}} title="Hides the radial starburst of dashed case links so that actual transaction and call paths are completely unobstructed">
+            <label className="inline-flex items-center gap-1 cursor-pointer text-xs ml-2" style={{display:'inline-flex', alignItems:'center', gap:'5px', fontSize:'11px', color: hideCaseLinks ? 'var(--accent)' : 'var(--text-dim)', cursor:'pointer', marginLeft:'6px'}} title="Hides the radial starburst of dashed case links so that actual transaction and call paths are completely unobstructed">
               <input type="checkbox" checked={hideCaseLinks} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setHideCaseLinks(e.target.checked)} style={{cursor:'pointer'}} />
               Hide Case Spokes (Clean Network)
             </label>
           </div>
-          <div className="text-xs" style={{fontSize:'12px', color:'var(--accent)'}}>
-            {graphType === 'cdr' ? '📞 Filtered: Telephone calls & Cell Towers only (unrelated entities hidden)' :
-             graphType === 'person' ? '👥 Filtered: Person syndicate members & direct linkages only' :
-             graphType === 'financial' ? '💳 Filtered: Bank accounts & money transfer routes only' :
-             '🌐 Full Graph: Drag nodes to inspect · Or ask AI Copilot e.g. "extract only CDR graph"'}
+          <div className="text-xs" style={{fontSize:'10.5px', color:'var(--text-dim)'}}>
+            {graphType === 'cdr' ? 'Filtered: Telephone calls & Cell Towers only (unrelated entities hidden)' :
+             graphType === 'person' ? 'Filtered: Person syndicate members & direct linkages only' :
+             graphType === 'financial' ? 'Filtered: Bank accounts & money transfer routes only' :
+             'Full Graph: Drag nodes to inspect · Or ask AI Copilot e.g. "extract only CDR graph"'}
           </div>
         </div>
 

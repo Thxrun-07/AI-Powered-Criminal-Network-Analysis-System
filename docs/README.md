@@ -34,7 +34,7 @@ docs/
   - In-depth logic for all **10 Suspicious Pattern Detectors** (Hawala rings, mule accounts, SIM swaps, etc.).
   - Graph centrality formulas (PageRank, Betweenness Centrality, Degree Centrality).
   - Shortest path ambiguity resolution engine.
-  - Complete 226-test suite mapping across unit, integration, and live categories.
+  - Complete 228-test suite mapping across unit, integration, and live categories.
 
 ### 3. [SYSTEM_ARCHITECTURE_AND_OPERATIONS_GUIDE.md](SYSTEM_ARCHITECTURE_AND_OPERATIONS_GUIDE.md)
 - **Purpose**: Production deployment, resilience, and operational management guide.

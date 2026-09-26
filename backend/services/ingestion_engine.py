@@ -31,14 +31,42 @@ NON_PERSON_WORDS = {
     "summary", "note", "notes", "remark", "remarks", "comment", "comments", "status",
     "evidence", "activity", "event", "narrative", "reason", "observation", "text",
     "message", "unknown", "unmapped", "amount", "transaction", "balance", "total",
-    "unknown person", "n/a", "none", "null", "undefined", "user", "users"
+    "unknown person", "n/a", "none", "null", "undefined", "user", "users",
+    "persons", "people", "identified", "during", "initial", "inquiry", "investigation",
+    "report", "brief", "dossier", "record", "records", "file", "files",
+    "statement", "action", "taken", "field", "location", "address", "call", "calls",
+    "case", "cases", "subject", "subjects", "target", "targets", "entity", "entities"
 }
+
+
+def clean_person_name(name: Optional[str]) -> str:
+    if not name or not isinstance(name, str):
+        return ""
+    clean = name.strip()
+    # Strip prefix titles / descriptors
+    clean = re.sub(r"^(Shri|Smt|Ms\.|Mr\.|Dr\.|Coordinator|Command|Driver)\s+", "", clean, flags=re.IGNORECASE).strip()
+
+    # Strip trailing heading/narrative phrases like "Persons identified during initial inquiry", "identified during...", etc.
+    clean = re.sub(
+        r"\s+(?:Persons?|People)\s+identified[^\n]*",
+        "", clean, flags=re.IGNORECASE
+    ).strip()
+    clean = re.sub(
+        r"\s+(?:identified|observed|recorded|noted|stated)\s+(?:during|in|at|by)[^\n]*",
+        "", clean, flags=re.IGNORECASE
+    ).strip()
+    clean = re.sub(
+        r"\s+(?:initial|preliminary|field)\s+(?:inquiry|investigation|report|notes?)[^\n]*",
+        "", clean, flags=re.IGNORECASE
+    ).strip()
+
+    return clean
 
 
 def is_valid_person_name(name: Optional[str]) -> bool:
     if not name or not isinstance(name, str):
         return False
-    clean = name.strip()
+    clean = clean_person_name(name)
     if not clean:
         return False
 
@@ -46,14 +74,18 @@ def is_valid_person_name(name: Optional[str]) -> bool:
     if not tokens:
         return False
 
-    for token in tokens:
-        if token in NON_PERSON_WORDS:
-            return False
-
-    if len(clean) > 50:
+    non_noise_tokens = [t for t in tokens if t not in NON_PERSON_WORDS]
+    if len(non_noise_tokens) == 0:
         return False
 
-    if re.search(r"[0-9!@#$%^&*()_=+\[\]{};:\",<>?/\\]", clean):
+    narrative_keywords = {
+        "account", "accounts", "emptied", "within", "transferred", "withdrawal", "transaction",
+        "inquiry", "identified", "narrative", "observation", "summary", "description", "surveillance"
+    }
+    if any(t in narrative_keywords for t in tokens):
+        return False
+
+    if len(clean) > 60:
         return False
 
     return True
@@ -129,11 +161,10 @@ CASE OPERATIONAL DATA:
         roles: Optional[List[str]] = None,
         phone_numbers: Optional[List[str]] = None
     ) -> Optional[PersonEntity]:
-        clean_name = name.strip() if name else ""
-        clean_name = re.sub(r"^(Shri|Smt|Ms\.|Mr\.|Dr\.|Coordinator|Command|Driver)\s+", "", clean_name, flags=re.IGNORECASE).strip()
+        clean_name = clean_person_name(name)
 
-        # NEVER convert arbitrary free-text into a Person when no explicit person_id is provided
-        if not person_id and not is_valid_person_name(clean_name):
+        # NEVER convert arbitrary free-text into a Person
+        if not is_valid_person_name(clean_name):
             return None
 
         if not clean_name:

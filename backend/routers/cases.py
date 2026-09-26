@@ -87,24 +87,26 @@ def ingest_case(
         )
 
 
-@router.get("", summary="List All Ingested Cases")
+@router.get("", summary="List Ingested Cases")
 def list_cases(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by case status"),
+    uploaded_by: Optional[str] = Query(None, alias="uploaded_by", description="Filter by officer badge or name"),
     limit: int = Query(50, ge=1, le=200, description="Max cases to return"),
     offset: int = Query(0, ge=0, description="Pagination offset")
 ):
     try:
         with db.get_session() as session:
-            return GraphService.list_cases(session, status=status_filter, limit=limit, offset=offset)
+            return GraphService.list_cases(session, status=status_filter, uploaded_by=uploaded_by, limit=limit, offset=offset)
     except ServiceUnavailable as se:
         logger.warning(f"Neo4j connection dropped in list_cases ({se}), reconnecting...")
         try:
             db.reconnect()
             with db.get_session() as session:
-                return GraphService.list_cases(session, status=status_filter, limit=limit, offset=offset)
+                return GraphService.list_cases(session, status=status_filter, uploaded_by=uploaded_by, limit=limit, offset=offset)
         except Exception as retry_err:
             logger.error(f"Reconnection failed in list_cases: {retry_err}")
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(retry_err))
+
 
 
 @router.get("/{case_id}", summary="Get Case Summary & Entity Statistics")

@@ -12,6 +12,8 @@ class CaseMetadata(BaseModel):
     reporting_date: Optional[str] = Field(default=None, description="Reporting date YYYY-MM-DD")
     crime_type: Optional[str] = Field(default=None, description="Primary Crime Category")
     assigned_officer: Optional[str] = Field(default=None, description="Assigned Investigating Officer")
+    uploaded_by: Optional[str] = Field(default=None, description="Officer badge number or name who uploaded the case")
+    lead_investigator: Optional[str] = Field(default=None, description="Name or badge of lead investigator")
 
 
 class PersonEntity(BaseModel):

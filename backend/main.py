@@ -20,8 +20,10 @@ from backend.routers import (
     cases_router,
     ingest_router,
     events_router,
-    blockchain_router
+    blockchain_router,
+    auth_router
 )
+
 
 
 @asynccontextmanager
@@ -109,6 +111,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Mount Routers (Specific routes first, parameterized paths after)
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(blockchain_router)
 app.include_router(path_router)
 app.include_router(rankings_router)
@@ -117,6 +120,7 @@ app.include_router(graph_router)
 app.include_router(cases_router)
 app.include_router(ingest_router)
 app.include_router(events_router)
+
 
 
 @app.get("/", response_class=HTMLResponse, tags=["Dashboard"])
