@@ -49,13 +49,40 @@
 
 ---
 
-## 🖥️ Live Prototype Dashboard Interface
+## 🖥️ Live Prototype Interface & Walkthrough Video
 
 The interactive single-page analyst workspace built with **React 19**, **TypeScript (strict mode)**, and **Tailwind CSS**, bundled via **Vite 5**:
 
+### 🎬 System Demonstration Video
+
+<div align="center">
+  <video src="docs/assets/landing_page_video.mp4" width="100%" controls poster="docs/assets/home_portal.png">
+    <p>Your browser does not support HTML5 video. <a href="docs/assets/landing_page_video.mp4"><b>▶ Click here to download and view the walkthrough video</b></a>.</p>
+  </video>
+  <p><i>Video: End-to-end walkthrough of the ATLAS Law Enforcement Intelligence Engine, from landing portal to deep graph analytics.</i></p>
+</div>
+
+<br/>
+
+### 📸 Core Operational Interfaces
+
+<div align="center">
+  <img src="docs/assets/home_portal.png" width="100%" alt="ATLAS Forensic Home Portal" />
+  <p><i>Figure 1: Interactive Forensic Landing Portal displaying system readiness, live Neo4j database status, and pipeline stages.</i></p>
+</div>
+
+<br/>
+
+<div align="center">
+  <img src="docs/assets/officer_auth_modal.png" width="100%" alt="ATLAS Terminal Authentication" />
+  <p><i>Figure 2: Dynamic Multi-Officer Terminal Authentication modal with official badge ID, security passcode, and clearance verification.</i></p>
+</div>
+
+<br/>
+
 <div align="center">
   <img src="docs/assets/command_center_dashboard.png" width="100%" alt="Atlas Command Center Dashboard" />
-  <p><i>Figure 1: Analyst Command Center Dashboard displaying ecosystem metrics, active FIR investigations, entity distribution histograms, and threat severity breakdown.</i></p>
+  <p><i>Figure 3: Analyst Command Center Dashboard displaying ecosystem metrics (523 entities, 192 insights), active investigations, entity distribution histograms, and threat severity mix.</i></p>
 </div>
 
 <br/>
@@ -152,8 +179,8 @@ To prevent incorrect identity merging, the prototype uses **deterministic primar
 Field investigators and detectives do not have time to construct complex Cypher graph queries. The **Hosted LLM Copilot** is docked directly inside the interactive canvas (`#graphAiPanel`), translating human questions into instant topological and forensic intelligence.
 
 <div align="center">
-  <img src="docs/assets/dashboard_live_demo.png" width="100%" alt="Interactive Graph Explorer with Docked AI Copilot" />
-  <p><i>Figure 2: Interactive ForceAtlas2 Graph Topology with docked AI Copilot chat drawer and quick prompt chips.</i></p>
+  <img src="docs/assets/graph_explorer_copilot.png" width="100%" alt="Interactive Graph Explorer with Docked AI Copilot" />
+  <p><i>Figure 4: Network Studio displaying live ForceAtlas2 graph canvas, multi-hop cluster separation, quick extract filters, and docked AI Copilot inference drawer.</i></p>
 </div>
 
 <br/>
@@ -514,9 +541,12 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   └── README.md                       # 👉 Blockchain & Tamper-Proofing Guide
 │
 └── docs/                               # 📑 Technical Specifications & Runbooks
-    ├── assets/                         # 🎨 High-Res Vector SVG HUD Visuals & Screenshots
-    │   ├── command_center_dashboard.png # Command Center overview & active cases
-    │   ├── dashboard_live_demo.png     # Graph Explorer & docked AI Copilot
+    ├── assets/                         # 🎨 Screenshots, Walkthrough Video & Visual Assets
+    │   ├── landing_page_video.mp4      # 🎬 Complete system demonstration walkthrough video
+    │   ├── home_portal.png             # Forensic landing portal & live status
+    │   ├── officer_auth_modal.png      # Officer terminal authentication & RBAC
+    │   ├── command_center_dashboard.png # Command Center overview & ecosystem metrics
+    │   ├── graph_explorer_copilot.png  # Network Studio canvas with docked AI Copilot
     │   ├── classified_hud_banner.svg   # Level-4 Top Secret HUD with Radar & Frequency Waves
     │   ├── tactical_dossier.svg        # Classified Suspect Dossier & Biometric Laser Scan
     │   ├── copilot_terminal.svg        # Glassmorphism Copilot Interaction Window
