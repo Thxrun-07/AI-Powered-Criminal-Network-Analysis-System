@@ -1,17 +1,9 @@
 <div align="center">
 
-<!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- 🎖️ TACTICAL FORENSIC GRAPH HUD                                      -->
-<!-- ═══════════════════════════════════════════════════════════════════ -->
-<a href="#-reproducible-3-minute-evaluator-demo">
-  <img src="docs/assets/classified_hud_banner.svg" width="100%" alt="Forensic Graph Intelligence HUD" />
-</a>
+# ⚖️ ATLAS: Criminal Network Analysis System
+### AI-Powered Multi-Modal Forensic Graph Intelligence Platform
 
 <br/>
-
-<!-- ═══════════════════════════════════════════════════════════════════ -->
-<!-- 📡 PROTOTYPE VERIFICATION CAPSULES                                  -->
-<!-- ═══════════════════════════════════════════════════════════════════ -->
 <p align="center">
   <img src="https://img.shields.io/badge/VERSION-2.0-00F5D4?style=for-the-badge&logo=semanticrelease&logoColor=black" alt="Version 2.0" />
   <img src="https://img.shields.io/badge/PROTOTYPE_STATUS-EVALUATION_READY_🟢-00F5D4?style=for-the-badge&logo=radar&logoColor=black" alt="Status" />
@@ -56,9 +48,11 @@ The interactive single-page analyst workspace built with **React 19**, **TypeScr
 ### 🎬 System Demonstration Video
 
 <div align="center">
-  <video src="docs/assets/landing_page_video.mp4" width="100%" controls poster="docs/assets/home_portal.png">
-    <p>Your browser does not support HTML5 video. <a href="docs/assets/landing_page_video.mp4"><b>▶ Click here to download and view the walkthrough video</b></a>.</p>
-  </video>
+  <a href="docs/assets/landing_page_video.mp4">
+    <img src="docs/assets/v2_home_portal.png" width="100%" alt="ATLAS System Demonstration Video" />
+    <br/><br/>
+    <b>▶ Click Here to Watch the Complete System Walkthrough Video (MP4)</b>
+  </a>
   <p><i>Video: End-to-end walkthrough of the ATLAS Law Enforcement Intelligence Engine, from landing portal to deep graph analytics.</i></p>
 </div>
 
@@ -67,21 +61,21 @@ The interactive single-page analyst workspace built with **React 19**, **TypeScr
 ### 📸 Core Operational Interfaces
 
 <div align="center">
-  <img src="docs/assets/home_portal.png" width="100%" alt="ATLAS Forensic Home Portal" />
+  <img src="docs/assets/v2_home_portal.png" width="100%" alt="ATLAS Forensic Home Portal" />
   <p><i>Figure 1: Interactive Forensic Landing Portal displaying system readiness, live Neo4j database status, and pipeline stages.</i></p>
 </div>
 
 <br/>
 
 <div align="center">
-  <img src="docs/assets/officer_auth_modal.png" width="100%" alt="ATLAS Terminal Authentication" />
+  <img src="docs/assets/v2_officer_auth.png" width="100%" alt="ATLAS Terminal Authentication" />
   <p><i>Figure 2: Dynamic Multi-Officer Terminal Authentication modal with official badge ID, security passcode, and clearance verification.</i></p>
 </div>
 
 <br/>
 
 <div align="center">
-  <img src="docs/assets/command_center_dashboard.png" width="100%" alt="Atlas Command Center Dashboard" />
+  <img src="docs/assets/v2_command_center.png" width="100%" alt="Atlas Command Center Dashboard" />
   <p><i>Figure 3: Analyst Command Center Dashboard displaying ecosystem metrics (523 entities, 192 insights), active investigations, entity distribution histograms, and threat severity mix.</i></p>
 </div>
 
@@ -156,12 +150,6 @@ Invoke-RestMethod -Uri "http://localhost:8000/api/blockchain/verify" -Method Get
 
 In forensic investigations, the system does not claim guilt; rather, it **ranks structurally significant entities and suspicious communication/financial patterns for investigator review**.
 
-<div align="center">
-  <img src="docs/assets/tactical_dossier.svg" width="100%" alt="Tactical Criminal Intelligence Dossier" />
-</div>
-
-<br/>
-
 ### How Entity Resolution is Handled (Preventing False Matches)
 To prevent incorrect identity merging, the prototype uses **deterministic primary business keys**:
 - **Phone Numbers**: E.164 MSISDN international format.
@@ -179,14 +167,8 @@ To prevent incorrect identity merging, the prototype uses **deterministic primar
 Field investigators and detectives do not have time to construct complex Cypher graph queries. The **Hosted LLM Copilot** is docked directly inside the interactive canvas (`#graphAiPanel`), translating human questions into instant topological and forensic intelligence.
 
 <div align="center">
-  <img src="docs/assets/graph_explorer_copilot.png" width="100%" alt="Interactive Graph Explorer with Docked AI Copilot" />
+  <img src="docs/assets/v2_graph_copilot.png" width="100%" alt="Interactive Graph Explorer with Docked AI Copilot" />
   <p><i>Figure 4: Network Studio displaying live ForceAtlas2 graph canvas, multi-hop cluster separation, quick extract filters, and docked AI Copilot inference drawer.</i></p>
-</div>
-
-<br/>
-
-<div align="center">
-  <img src="docs/assets/copilot_terminal.svg" width="100%" alt="Interactive AI Copilot Terminal" />
 </div>
 
 <br/>
@@ -241,12 +223,6 @@ uvicorn backend.main:app --reload
 
 Continuous, case-scoped graph algorithms engineered to identify suspicious patterns for human investigator verification:
 
-<div align="center">
-  <img src="docs/assets/detectors_grid.svg" width="100%" alt="10 Scoped Cypher Detectors HUD" />
-</div>
-
-<br/>
-
 | # | Detector Name | Threat Level | Algorithmic Mechanism |
 | :-: | :--- | :-: | :--- |
 | **1** | **Frequent Caller Spikes** | <img src="https://img.shields.io/badge/HIGH-7928CA?style=flat-square" /> | Detects communication volume outliers (>30 calls) between unassociated nodes in short intervals. |
@@ -266,25 +242,13 @@ Continuous, case-scoped graph algorithms engineered to identify suspicious patte
 
 Relational SQL queries only count raw totals (e.g. *number of calls or transactions*). In real-world syndicates, core coordinators purposely keep low call volumes, relying on intermediaries.
 
-By calculating **Betweenness Centrality** and **PageRank**, the graph engine isolates entities that act as structural bridges between otherwise disconnected clusters:
-
-<div align="center">
-  <img src="docs/assets/centrality_radar_chart.svg" width="100%" alt="Graph Centrality Radar Chart" />
-</div>
-
-<br/>
+By calculating **Betweenness Centrality** and **PageRank**, the graph engine isolates entities that act as structural bridges between otherwise disconnected clusters.
 
 ---
 
 ## 🔒 Cryptographic Chain of Custody (Hash-Chained Ledger)
 
 To support legal admissibility standards (e.g., Section 65B of the Indian Evidence Act / BSA guidelines), the system implements a **local hash-chained evidence ledger**:
-
-<div align="center">
-  <img src="docs/assets/blockchain_pipeline.svg" width="100%" alt="Blockchain Pipeline Diagram" />
-</div>
-
-<br/>
 
 - **Deterministic SHA-256 Merkle Roots**: All entities and relationships in an ingested payload are normalized and hashed into a Merkle root tree.
 - **Cryptographic Hash Chaining**: Every block contains the `previous_hash` of its predecessor. Altering a past record invalidates every subsequent block.
@@ -541,18 +505,12 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   └── README.md                       # 👉 Blockchain & Tamper-Proofing Guide
 │
 └── docs/                               # 📑 Technical Specifications & Runbooks
-    ├── assets/                         # 🎨 Screenshots, Walkthrough Video & Visual Assets
+    ├── assets/                         # 🎨 Authentic UI Screenshots & Demo Video
     │   ├── landing_page_video.mp4      # 🎬 Complete system demonstration walkthrough video
-    │   ├── home_portal.png             # Forensic landing portal & live status
-    │   ├── officer_auth_modal.png      # Officer terminal authentication & RBAC
-    │   ├── command_center_dashboard.png # Command Center overview & ecosystem metrics
-    │   ├── graph_explorer_copilot.png  # Network Studio canvas with docked AI Copilot
-    │   ├── classified_hud_banner.svg   # Level-4 Top Secret HUD with Radar & Frequency Waves
-    │   ├── tactical_dossier.svg        # Classified Suspect Dossier & Biometric Laser Scan
-    │   ├── copilot_terminal.svg        # Glassmorphism Copilot Interaction Window
-    │   ├── detectors_grid.svg          # 10 Cypher Pattern Detectors Dashboard
-    │   ├── centrality_radar_chart.svg  # Mathematical Graph Centrality Spider Chart
-    │   └── blockchain_pipeline.svg     # Cryptographic Merkle Chain Flow
+    │   ├── v2_home_portal.png          # Forensic landing portal & live status
+    │   ├── v2_officer_auth.png         # Officer terminal authentication & RBAC
+    │   ├── v2_command_center.png       # Command Center overview & ecosystem metrics
+    │   └── v2_graph_copilot.png        # Network Studio canvas with docked AI Copilot
     ├── EVENTS_API.md                   # Real-time event streaming specification
     ├── SUMMARY.md                      # Comprehensive system architecture & entity model
     ├── SYSTEM_ARCHITECTURE_AND_OPERATIONS_GUIDE.md # Production runbook & failover guide
