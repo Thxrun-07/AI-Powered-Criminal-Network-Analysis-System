@@ -48,12 +48,12 @@ The interactive single-page analyst workspace built with **React 19**, **TypeScr
 ### 🎬 System Demonstration Video
 
 <div align="center">
-  <a href="docs/assets/landing_page_video.mp4">
-    <img src="docs/assets/v2_home_portal.png" width="100%" alt="ATLAS System Demonstration Video" />
+  <a href="https://youtu.be/nm0dIAtuUTM" target="_blank" rel="noopener noreferrer">
+    <img src="https://img.youtube.com/vi/nm0dIAtuUTM/maxresdefault.jpg" width="100%" alt="ATLAS System Demonstration Video on YouTube" />
     <br/><br/>
-    <b>▶ Click Here to Watch the Complete System Walkthrough Video (MP4)</b>
+    <img src="https://img.shields.io/badge/YOUTUBE-WATCH_FULL_DEMO_▶-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch on YouTube" />
   </a>
-  <p><i>Video: End-to-end walkthrough of the ATLAS Law Enforcement Intelligence Engine, from landing portal to deep graph analytics.</i></p>
+  <p><i>🎬 Click above to watch the complete end-to-end operational walkthrough on YouTube.</i></p>
 </div>
 
 <br/>
@@ -505,8 +505,7 @@ AI-Powered-Criminal-Network-Analysis-System/
 │   └── README.md                       # 👉 Blockchain & Tamper-Proofing Guide
 │
 └── docs/                               # 📑 Technical Specifications & Runbooks
-    ├── assets/                         # 🎨 Authentic UI Screenshots & Demo Video
-    │   ├── landing_page_video.mp4      # 🎬 Complete system demonstration walkthrough video
+    ├── assets/                         # 🎨 Authentic UI Screenshots & Visual Assets
     │   ├── v2_home_portal.png          # Forensic landing portal & live status
     │   ├── v2_officer_auth.png         # Officer terminal authentication & RBAC
     │   ├── v2_command_center.png       # Command Center overview & ecosystem metrics
