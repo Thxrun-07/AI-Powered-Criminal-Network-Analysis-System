@@ -44,7 +44,11 @@ def test_auth_service_register_and_login(auth_service):
 
 import uuid
 
-def test_auth_router_api():
+def test_auth_router_api(monkeypatch, tmp_path):
+    test_storage = str(tmp_path / "router_users.json")
+    isolated_auth = AuthService(storage_path=test_storage)
+    monkeypatch.setattr("backend.routers.auth.auth_service", isolated_auth)
+
     unique_id = uuid.uuid4().hex[:6].upper()
     unique_badge = f"IND-TEST-{unique_id}"
     unique_name = f"Test Officer {unique_id}"
