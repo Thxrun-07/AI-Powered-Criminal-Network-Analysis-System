@@ -42,7 +42,7 @@ docs/
   - Multi-tier system architecture (FastAPI Backend, React 19 SPA, Neo4j Aura Cloud, Blockchain Ledger).
   - 1-Click launcher scripts (`start_system.bat`, `run_backend.bat`, `run_frontend.bat`).
   - Production environment configuration and `.env` variables.
-  - **LLM API Key Rotation & Quota Management**: Detailed runbook on updating API keys when Google AI Studio limits expire.
+  - **LLM API Key Rotation & Quota Management**: Detailed runbook on updating API keys when hosted LLM rate limits expire.
   - **Zero-Downtime Heuristic Fallback**: Explanation of how the platform gracefully degrades to offline graph heuristics without service interruption.
   - Health check probes (`GET /api/health`), Docker Compose operations, and backup/restore procedures.
 

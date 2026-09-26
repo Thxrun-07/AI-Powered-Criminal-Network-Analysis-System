@@ -164,18 +164,18 @@ flowchart TB
 
 ## 4. Hosted LLM: Rate Limits, Quota Expiry & Fallback Engine
 
-### 4.1 Understanding Google's Free-Tier Quota
+### 4.1 Understanding Hosted LLM Rate Limits & Quotas
 The hosted LLM provider offers API keys with standard rate limits:
-- **Requests Per Minute (RPM)**: 15 RPM
-- **Requests Per Day (RPD)**: 20–50 RPD (Free-tier quotas vary by Google Cloud project)
-- **Token Limits**: 1,000,000 TPM
+- **Requests Per Minute (RPM)**: Standard provider rate window
+- **Requests Per Day (RPD)**: Provider-specified daily quota
+- **Token Limits**: Provider token context ceiling
 
-When the daily limit is exhausted, Google's API returns:
+When the quota limit is exhausted, the provider API returns:
 ```json
 {
   "error": {
     "code": 429,
-    "message": "You exceeded your current quota... Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests",
+    "message": "You exceeded your current quota... Quota exceeded for metric: generate_content_requests",
     "status": "RESOURCE_EXHAUSTED"
   }
 }
@@ -217,14 +217,14 @@ When the LLM is rate-limited or offline, the fallback engine:
 When you want to replace an exhausted API key with a fresh one, follow these steps:
 
 ### Step 1: Generate a Free API Key
-1. Visit [Google AI Studio](https://aistudio.google.com/).
-2. Sign in with your Google account.
-3. Click **"Get API key"** in the left sidebar.
-4. Click **"Create API key"** -> Select any existing project or create a new project.
-5. Copy the generated key string (e.g. `AIzaSy...`).
+1. Visit your hosted LLM provider console.
+2. Sign in with your developer account.
+3. Click **"Get API key"** / **"Create API key"** in the console dashboard.
+4. Select or create an investigative workspace project.
+5. Copy the generated key string.
 
 > [!TIP]
-> **Pro Tip for Hackathons and Live Demos**: Create 2 or 3 separate Google projects in AI Studio. Each project receives its own free daily request quota. Keep the keys handy so you can rotate them if needed.
+> **Pro Tip for Hackathons and Live Demos**: Create 2 or 3 separate API keys in your provider console. Each project receives its own request quota. Keep the keys handy so you can rotate them if needed.
 
 ### Step 2: Configure the API Key in Atlas
 You have three methods to set the key (in order of priority):

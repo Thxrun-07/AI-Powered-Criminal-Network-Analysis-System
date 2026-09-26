@@ -262,9 +262,9 @@ The platform incorporates an immutable, tamper-evident audit ledger (`app/servic
 - Gathers active subgraph topology, top suspects by degree, communication endpoints, and fund transfers, formulating direct deductive conclusions and immediate field recommendations.
 
 ### 7.3 Managing & Replacing API Keys When Quota / Credits Expire
-- **Free Tier Limits**: Google AI Studio free tier enforces rate limits (e.g. 15 requests per minute, daily limits). Once exceeded, requests throw HTTP 429 `RESOURCE_EXHAUSTED`.
+- **Rate Limits**: Hosted LLM providers enforce rate limits (e.g. requests per minute, daily limits). Once exceeded, requests throw HTTP 429 `RESOURCE_EXHAUSTED`.
 - **Replacing the Key**:
-  1. Generate a new API key at [Google AI Studio](https://aistudio.google.com/app/apikey).
+  1. Generate a new API key from your hosted LLM provider console.
   2. Update `LLM_API_KEY=...` in `.env`, or override via terminal (`$env:LLM_API_KEY="..."` on Windows or `export LLM_API_KEY="..."` on Linux/macOS).
   3. Restart or hot-reload Uvicorn.
 - **Zero-Downtime Guarantee**: If the key is not replaced or offline, Atlas **never crashes or returns 500 errors**. The backend automatically intercepts the quota exception and seamlessly switches to the internal **Demonstration Heuristic Graph Inference Engine**, calculating answers directly from live Neo4j degree centrality, transaction paths, and communication hubs.

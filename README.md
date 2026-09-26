@@ -176,8 +176,8 @@ Field investigators and detectives do not have time to construct complex Cypher 
 The platform uses a hosted LLM service for AI intelligence. You can configure your API key and rotate it at any time with zero downtime.
 
 ### Step 1: Obtain a Free Key
-1. Visit **[Google AI Studio](https://aistudio.google.com/app/apikey)**.
-2. Sign in with any Google account.
+1. Visit your **Hosted LLM API Console**.
+2. Sign in with your developer account.
 3. Click **"Create API Key"** and copy your token.
 
 ### Step 2: Configure in `.env`
